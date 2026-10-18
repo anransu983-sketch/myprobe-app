@@ -45,6 +45,15 @@ class _TerminalTabState extends State<TerminalTab> {
         animation: AppState.instance,
         builder: (_, __) {
           final admin = AppState.instance.client.admin;
+          // 详情页 💻 跳过来的：自动弹出该节点的连接框
+          final pending =
+              AppState.instance.consumeTerminalNode();
+          if (pending != null && admin) {
+            WidgetsBinding.instance
+                .addPostFrameCallback((_) {
+              if (mounted) _openConnect(pending);
+            });
+          }
           if (!admin) {
             return Center(
               child: Column(

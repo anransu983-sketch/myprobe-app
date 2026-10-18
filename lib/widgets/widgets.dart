@@ -246,3 +246,125 @@ class GradientAppBar extends StatelessWidget
     );
   }
 }
+
+/// 网页版风格指标格：图标+标签 … 右对齐粗体值 / 粉条 / 小字说明
+class WebMetric extends StatelessWidget {
+  final String icon;
+  final String label;
+  final double? pct;
+  final String value;
+  final String caption;
+  const WebMetric(
+      {super.key,
+      required this.icon,
+      required this.label,
+      required this.pct,
+      required this.value,
+      required this.caption});
+
+  @override
+  Widget build(BuildContext context) {
+    final v = (pct ?? 0).clamp(0.0, 100.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(icon,
+                style: const TextStyle(fontSize: 14)),
+            const SizedBox(width: 4),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 13,
+                    color: BocchiTheme.inkSoft)),
+            const Spacer(),
+            Text(value,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: BocchiTheme.ink)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: v / 100,
+            minHeight: 7,
+            backgroundColor: BocchiTheme.pinkLight,
+            valueColor: const AlwaysStoppedAnimation(
+                BocchiTheme.pinkDeep),
+          ),
+        ),
+        if (caption.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(caption,
+                style: const TextStyle(
+                    fontSize: 11,
+                    color: BocchiTheme.inkSoft)),
+          ),
+      ],
+    );
+  }
+}
+
+/// 网页版风格小统计盒（两行粉字 + 灰小字标题）
+class WebStatBox extends StatelessWidget {
+  final String line1;
+  final String line2;
+  const WebStatBox(
+      {super.key, required this.line1, required this.line2});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          vertical: 8, horizontal: 6),
+      decoration: BoxDecoration(
+        color: BocchiTheme.pinkLight.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Text(line1,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: BocchiTheme.pinkDeep,
+                  height: 1.4)),
+          const SizedBox(height: 2),
+          Text(line2,
+              style: const TextStyle(
+                  fontSize: 10,
+                  color: BocchiTheme.inkSoft)),
+        ],
+      ),
+    );
+  }
+}
+
+/// 粉色小胶囊
+class PinkPill extends StatelessWidget {
+  final String text;
+  final bool dim;
+  const PinkPill({super.key, required this.text, this.dim = false});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: dim
+            ? BocchiTheme.pinkLight.withValues(alpha: 0.6)
+            : BocchiTheme.pinkLight,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(text,
+          style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: BocchiTheme.pinkDeep)),
+    );
+  }
+}

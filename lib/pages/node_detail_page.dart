@@ -87,7 +87,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     children: [
-                      _infoCard(n),
+                      _webCard(n),
                       _probesCard(n),
                       _chartCard('CPU / 内存 (%)', [
                         _Series('CPU', _hist?.cpu, BocchiTheme.pinkDeep),
@@ -105,47 +105,212 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
     );
   }
 
-  Widget _infoCard(ProbeNode n) {
-    String gb(int b) => b <= 0 ? '--' : '${(b / 1024 / 1024 / 1024).toStringAsFixed(1)}G';
-    final rows = [
-      ['状态', n.online ? '在线' : '离线'],
-      ['系统', n.os.isEmpty ? '--' : n.os],
-      ['IP', AppState.instance.showIp(n.ip)],
-      ['负载', n.load1?.toStringAsFixed(2) ?? '--'],
-      ['运行', fmtUptime(n.uptime)],
-      ['内存', '${gb(n.memTotal)}'],
-      ['硬盘', '${gb(n.diskTotal)}'],
-      ['到期', n.expireDate ?? '--${n.daysLeft != null ? '（剩${n.daysLeft}天）' : ''}'],
-      if ((n.price ?? 0) > 0)
-        ['价格', '${n.currency ?? ''}${n.price} / ${n.billCycle == 'yearly' ? '年' : '月'}'],
-    ];
+  /// 网页版机器卡：名字+图标+余期+💻 / pills / 指标2x2 / 三统计盒
+  Widget _webCard(ProbeNode n) {
+    String mb(int b) =>
+        b <= 0 ? '--' : '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
+    String gb(num b) => b <= 0
+        ? '--'
+        : '${(b / 1024 / 1024 / 1024).toStringAsFixed(1)}G';
+    final cur = n.currency ?? '¥';
+    final rv = _remainValue(n);
+    final osIcon =
+        n.os.toLowerCase().contains('linux') ? '🐧' : '🖥️';
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final r in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    SizedBox(
-                        width: 64,
-                        child: Text(r[0],
-                            style: const TextStyle(
-                                color: BocchiTheme.inkSoft,
-                                fontSize: 13))),
-                    Expanded(
-                        child: Text(r[1],
-                            style: const TextStyle(
-                                color: BocchiTheme.ink, fontSize: 13))),
-                  ],
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    n.name.isEmpty ? n.id : n.name,
+                    style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: BocchiTheme.ink),
+                  ),
                 ),
-              ),
+                Text(osIcon,
+                    style: const TextStyle(fontSize: 18)),
+                const SizedBox(width: 6),
+                const Text('🌐',
+                    style: TextStyle(fontSize: 18)),
+                if (n.daysLeft != null) ...[
+                  const SizedBox(width: 8),
+                  PinkPill(
+                      text: n.daysLeft! < 0
+                          ? '已过期'
+                          : '余期${n.daysLeft}天'),
+                ],
+                if ((n.sshHost ?? '').isNotEmpty)
+                  IconButton(
+                    icon: const Text('💻',
+                        style: TextStyle(fontSize: 20)),
+                    tooltip: 'SSH 终端',
+                    onPressed: () => AppState.instance
+                        .openTerminalFor(n),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                PinkPill(
+                    text: n.online
+                        ? (n.uptime != null
+                            ? '在线 ${fmtUptime(n.uptime)}'
+                            : '在线')
+                        : '离线',
+                    dim: true),
+                if ((n.price ?? 0) > 0)
+                  PinkPill(
+                      text:
+                          '${n.billCycle == 'yearly' ? '年付' : '月付'} · $cur${n.price!.toStringAsFixed(n.price! % 1 == 0 ? 0 : 2)}',
+                      dim: true),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                    child: WebMetric(
+                        icon: '🖥️',
+                        label: 'CPU',
+                        pct: n.cpu,
+                        value: n.cpu == null
+                            ? '--'
+                            : '${n.cpu!.toStringAsFixed(1)}%',
+                        caption: n.load1 == null
+                            ? ''
+                            : '负载 ${n.load1!.toStringAsFixed(2)}${n.cpuCores > 0 ? ' / ${n.cpuCores}核' : ''}')),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: WebMetric(
+                        icon: '🧠',
+                        label: '内存',
+                        pct: n.mem,
+                        value: n.mem == null
+                            ? '--'
+                            : '${n.mem!.toStringAsFixed(1)}%',
+                        caption:
+                            '${mb(_usedBytes(n.mem, n.memTotal).toInt())} / ${mb(n.memTotal)}')),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                    child: WebMetric(
+                        icon: '🗄️',
+                        label: '硬盘',
+                        pct: n.disk,
+                        value: n.disk == null
+                            ? '--'
+                            : '${n.disk!.toStringAsFixed(1)}%',
+                        caption:
+                            '${gb(_usedBytes(n.disk, n.diskTotal))} / ${gb(n.diskTotal)}')),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: WebMetric(
+                        icon: '⚡',
+                        label: '流量',
+                        pct: n.quotaGb > 0
+                            ? n.quotaPct
+                            : null,
+                        value: n.quotaGb > 0
+                            ? '${n.quotaPct.toStringAsFixed(1)}%'
+                            : '—',
+                        caption: n.quotaGb > 0
+                            ? '${(n.monthRxGb + n.monthTxGb).toStringAsFixed(1)} GB / ${n.quotaGb.toStringAsFixed(0)} GB'
+                            : '未设配额')),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                    child: WebStatBox(
+                        line1:
+                            '↑${fmtSpeed(n.tx)}\n↓${fmtSpeed(n.rx)}',
+                        line2: '实时网速')),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: WebStatBox(
+                        line1:
+                            '↑${n.monthTxGb.toStringAsFixed(1)} GB\n↓${n.monthRxGb.toStringAsFixed(1)} GB',
+                        line2: '本月流量')),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: WebStatBox(
+                        line1: n.daysLeft != null
+                            ? '余期${n.daysLeft}天\n${rv != null ? '余值$cur${rv.toStringAsFixed(2)}' : ''}'
+                            : '${n.online ? '在线' : '离线'}\n${AppState.instance.showIp(n.ip)}',
+                        line2: n.daysLeft != null
+                            ? '余期 / 余值'
+                            : '状态 / IP')),
+              ],
+            ),
           ],
         ),
       ),
     );
+  }
+
+  double _usedBytes(double? pct, int total) =>
+      pct == null ? 0 : (pct / 100 * total);
+
+  /// 余值 = 价格 × 剩余天数 / 周期总天数（跟网页端同口径）
+  double? _remainValue(ProbeNode n) {
+    if ((n.price ?? 0) <= 0 || n.daysLeft == null) return null;
+    var total =
+        n.billCycle == 'yearly' ? 365 : 30;
+    try {
+      if ((n.buyDate ?? '').length >= 10 &&
+          (n.expireDate ?? '').length >= 10) {
+        final buy = DateTime.parse(n.buyDate!.substring(0, 10));
+        final exp =
+            DateTime.parse(n.expireDate!.substring(0, 10));
+        final d = exp.difference(buy).inDays;
+        if (d > 0) total = d;
+      }
+    } catch (_) {}
+    return n.price! * (n.daysLeft! < 0 ? 0 : n.daysLeft!) / total;
+  }
+
+  /// 探测目标：按地区分组，只看一个地区的三网，可切换地区
+  String? _region;
+
+  Map<String, List<NodeProbe>> _groupByRegion(
+      List<NodeProbe> ps) {
+    final map = <String, List<NodeProbe>>{};
+    for (final p in ps) {
+      var region = '其他';
+      for (final c in ['移动', '电信', '联通']) {
+        if (p.name.endsWith(c) && p.name.length > c.length) {
+          region =
+              p.name.substring(0, p.name.length - c.length);
+          break;
+        }
+      }
+      map.putIfAbsent(region, () => []).add(p);
+    }
+    const order = ['移动', '电信', '联通'];
+    for (final list in map.values) {
+      list.sort((a, b) {
+        var ai = order.indexWhere((c) => a.name.endsWith(c));
+        var bi = order.indexWhere((c) => b.name.endsWith(c));
+        if (ai < 0) ai = 99;
+        if (bi < 0) bi = 99;
+        return ai.compareTo(bi);
+      });
+    }
+    return map;
   }
 
   Widget _rangeCard() {
@@ -314,10 +479,15 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
     );
   }
 
-  /// 网页版风格：探测目标表（延迟/丢包 + 粉条）
+  /// 网页版风格：探测目标表（地区三网 + 粉条，地区可切换）
   Widget _probesCard(ProbeNode n) {
-    final ps = n.nodeProbes;
-    if (ps.isEmpty) return const SizedBox.shrink();
+    final groups = _groupByRegion(n.nodeProbes);
+    if (groups.isEmpty) return const SizedBox.shrink();
+    final regions = groups.keys.toList();
+    if (_region == null || !regions.contains(_region)) {
+      _region = regions.contains('浙江') ? '浙江' : regions.first;
+    }
+    final ps = groups[_region] ?? [];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -329,6 +499,32 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
                     color: BocchiTheme.ink)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 36,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: regions.length,
+                separatorBuilder: (_, __) =>
+                    const SizedBox(width: 8),
+                itemBuilder: (_, i) {
+                  final r = regions[i];
+                  final sel = r == _region;
+                  return ChoiceChip(
+                    label: Text(r),
+                    selected: sel,
+                    selectedColor: BocchiTheme.pinkDeep,
+                    labelStyle: TextStyle(
+                        color: sel
+                            ? Colors.white
+                            : BocchiTheme.ink,
+                        fontSize: 13),
+                    onSelected: (_) =>
+                        setState(() => _region = r),
+                  );
+                },
+              ),
+            ),
             const SizedBox(height: 4),
             const Row(
               children: [

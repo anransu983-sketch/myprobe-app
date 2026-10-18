@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
+import 'models.dart';
 
 /// 全局应用状态：服务端地址 + 登录态
 class AppState extends ChangeNotifier {
@@ -55,5 +56,20 @@ class AppState extends ChangeNotifier {
   void goTab(int i) {
     tabIndex = i;
     notifyListeners();
+  }
+
+  /// 详情页 💻 点过来：跳终端 Tab 并自动弹出该节点的连接框
+  ProbeNode? pendingTerminalNode;
+  void openTerminalFor(ProbeNode n) {
+    pendingTerminalNode = n;
+    tabIndex = 2;
+    notifyListeners();
+  }
+
+  /// 终端 Tab 消费掉待处理的节点（只消费一次）
+  ProbeNode? consumeTerminalNode() {
+    final n = pendingTerminalNode;
+    pendingTerminalNode = null;
+    return n;
   }
 }
