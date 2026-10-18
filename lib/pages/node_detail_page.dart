@@ -316,24 +316,43 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
   Widget _rangeCard() {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
           children: [
             const Text('时间范围',
-                style: TextStyle(color: BocchiTheme.inkSoft, fontSize: 13)),
-            const Spacer(),
-            SegmentedButton<String>(
-              segments: [
-                for (final r in _ranges)
-                  ButtonSegment(value: r, label: Text(_rangeLabels[r]!)),
-              ],
-              selected: {_range},
-              onSelectionChanged: (s) {
-                setState(() => _range = s.first);
-                _fetch();
-              },
-              style: const ButtonStyle(
-                visualDensity: VisualDensity.compact,
+                style: TextStyle(
+                    color: BocchiTheme.inkSoft,
+                    fontSize: 13)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final r in _ranges)
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(_rangeLabels[r]!,
+                              style: const TextStyle(
+                                  fontSize: 12)),
+                          selected: _range == r,
+                          selectedColor:
+                              BocchiTheme.pinkDeep,
+                          labelStyle: TextStyle(
+                              color: _range == r
+                                  ? Colors.white
+                                  : BocchiTheme.ink),
+                          onSelected: (_) {
+                            setState(() => _range = r);
+                            _fetch();
+                          },
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
