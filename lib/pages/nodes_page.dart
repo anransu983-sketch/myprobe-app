@@ -7,6 +7,8 @@ import '../widgets/widgets.dart';
 import 'node_detail_page.dart';
 import 'node_admin.dart';
 
+/// 节点 Tab：顶部 pills（全部/各节点）+ 横滑分页；
+/// 全部页纵向磁吸翻卡，单机页复用详情内容
 class NodesPage extends StatefulWidget {
   const NodesPage({super.key});
   @override
@@ -18,6 +20,10 @@ class _NodesPageState extends State<NodesPage> {
   bool _loading = true;
   String? _err;
   Timer? _timer;
+  final _hCtrl = PageController();
+  final _pillScroll = ScrollController();
+  int _page = 0; // 0=全部，1..n=第i个节点
+  final Map<int, GlobalKey> _pillKeys = {};
 
   @override
   void initState() {
@@ -30,6 +36,8 @@ class _NodesPageState extends State<NodesPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _hCtrl.dispose();
+    _pillScroll.dispose();
     super.dispose();
   }
 
@@ -42,6 +50,11 @@ class _NodesPageState extends State<NodesPage> {
         _nodes = nodes;
         _err = null;
         _loading = false;
+        // 节点增减后 clamp 页码
+        if (_page > _nodes.length) {
+          _page = _nodes.length;
+          if (_hCtrl.hasClients) _hCtrl.jumpToPage(_page);
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -49,6 +62,21 @@ class _NodesPageState extends State<NodesPage> {
         _err = '$e';
         _loading = false;
       });
+    }
+  }
+
+  void _goPage(int p) {
+    setState(() => _page = p);
+    if (_hCtrl.hasClients) {
+      _hCtrl.animateToPage(p,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut);
+    }
+    final k = _pillKeys[p];
+    if (k?.currentContext != null) {
+      Scrollable.ensureVisible(k!.currentContext!,
+          duration: const Duration(milliseconds: 250),
+          alignment: 0.5);
     }
   }
 
@@ -93,18 +121,120 @@ class _NodesPageState extends State<NodesPage> {
                       ],
                     ),
                   )
-                : RefreshIndicator(
-                    onRefresh: () => _fetch(),
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 8),
-                      itemCount: _nodes.length,
-                      itemBuilder: (_, i) => _NodeCard(
-                          node: _nodes[i],
-                          onChanged: () =>
-                              _fetch(silent: true)),
-                    ),
+                : Column(
+                    children: [
+                      _pills(),
+                      Expanded(
+                        child: PageView.builder(
+                          controller: _hCtrl,
+                          itemCount: 1 + _nodes.length,
+                          onPageChanged: (p) =>
+                              setState(() => _page = p),
+                          itemBuilder: (_, p) => p == 0
+                              ? _AllPager(
+                                  nodes: _nodes,
+                                  onTapNode: (i) =>
+                                      _goPage(i + 1),
+                                  onChanged: () =>
+                                      _fetch(silent: true),
+                                )
+                              : NodeDetailBody(
+                                  key: ValueKey(
+                                      'detail-${_nodes[p - 1].id}'),
+                                  nodeId: _nodes[p - 1].id,
+                                ),
+                        ),
+                      ),
+                    ],
                   ),
+      ),
+    );
+  }
+
+  Widget _pills() {
+    final labels = [
+      '全部',
+      for (final n in _nodes)
+        (n.name.isEmpty ? n.id : n.name)
+    ];
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: ListView.separated(
+        controller: _pillScroll,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: labels.length,
+        separatorBuilder: (_, __) =>
+            const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final sel = i == _page;
+          _pillKeys[i] ??= GlobalKey();
+          return GestureDetector(
+            key: _pillKeys[i],
+            onTap: () => _goPage(i),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 18, vertical: 8),
+              decoration: BoxDecoration(
+                color: sel
+                    ? BocchiTheme.pinkDeep
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: sel
+                    ? null
+                    : Border.all(
+                        color: BocchiTheme.pink
+                            .withValues(alpha: 0.4)),
+              ),
+              alignment: Alignment.center,
+              child: Text(labels[i],
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: sel
+                          ? Colors.white
+                          : BocchiTheme.ink)),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 全部页：纵向磁吸翻卡
+class _AllPager extends StatelessWidget {
+  final List<ProbeNode> nodes;
+  final void Function(int index) onTapNode;
+  final VoidCallback onChanged;
+  const _AllPager(
+      {required this.nodes,
+      required this.onTapNode,
+      required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    if (nodes.isEmpty) {
+      return const Center(
+          child: Text('暂无节点',
+              style:
+                  TextStyle(color: BocchiTheme.inkSoft)));
+    }
+    return PageView.builder(
+      scrollDirection: Axis.vertical,
+      pageSnapping: true,
+      itemCount: nodes.length,
+      itemBuilder: (_, i) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: _NodeCard(
+            node: nodes[i],
+            onChanged: onChanged,
+            onTap: () => onTapNode(i),
+          ),
+        ),
       ),
     );
   }
@@ -114,8 +244,11 @@ class _NodesPageState extends State<NodesPage> {
 class _NodeCard extends StatelessWidget {
   final ProbeNode node;
   final VoidCallback onChanged;
+  final VoidCallback? onTap;
   const _NodeCard(
-      {required this.node, required this.onChanged});
+      {required this.node,
+      required this.onChanged,
+      this.onTap});
 
   String _uptime(ProbeNode n) {
     if (n.uptime == null) return n.online ? '在线' : '离线';
@@ -136,16 +269,20 @@ class _NodeCard extends StatelessWidget {
     return Opacity(
       opacity: n.online ? 1 : 0.62,
       child: Card(
+        margin: const EdgeInsets.symmetric(
+            horizontal: 10, vertical: 0),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-                builder: (_) =>
-                    NodeDetailPage(nodeId: n.id)),
-          ),
+          onTap: onTap ??
+              () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => NodeDetailPage(
+                            nodeId: n.id)),
+                  ),
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(

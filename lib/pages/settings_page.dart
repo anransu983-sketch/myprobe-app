@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../state.dart';
 import '../api.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../ui.dart';
+import '../update.dart';
 import '../widgets/widgets.dart';
 import 'node_admin.dart';
 
@@ -18,11 +20,15 @@ class _SettingsPageState extends State<SettingsPage> {
   final _user = TextEditingController();
   final _pass = TextEditingController();
   bool _busy = false;
+  String _ver = '';
 
   @override
   void initState() {
     super.initState();
     _server.text = AppState.instance.client.baseUrl;
+    PackageInfo.fromPlatform().then((p) {
+      if (mounted) setState(() => _ver = p.version);
+    });
   }
 
   @override
@@ -198,11 +204,41 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.all(16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('应用',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: BocchiTheme.ink)),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(
+                              Icons.system_update_alt),
+                          label: Text(_ver.isEmpty
+                              ? '检查更新'
+                              : '检查更新（当前 v$_ver）'),
+                          onPressed: _busy
+                              ? null
+                              : () =>
+                                  runUpdateCheck(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
                 child: Center(
-                  child: Text('探针 v1.0.0 · 数据来自自建 MyProbe',
-                      style: TextStyle(
+                  child: Text(
+                      '探针${_ver.isEmpty ? '' : ' v$_ver'} · 数据来自自建 MyProbe',
+                      style: const TextStyle(
                           fontSize: 12,
                           color: BocchiTheme.inkSoft)),
                 ),

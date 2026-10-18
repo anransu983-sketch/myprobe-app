@@ -10,50 +10,18 @@ import 'node_admin.dart';
 const _ranges = ['1h', '6h', '24h', '7d'];
 const _rangeLabels = {'1h': '1小时', '6h': '6小时', '24h': '24小时', '7d': '7天'};
 
+/// 节点详情页（独立页面：AppBar + 内容）
 class NodeDetailPage extends StatefulWidget {
   final String nodeId;
   const NodeDetailPage({super.key, required this.nodeId});
   @override
-  State<NodeDetailPage> createState() => _NodeDetailPageState();
+  State<NodeDetailPage> createState() =>
+      _NodeDetailPageState();
 }
 
 class _NodeDetailPageState extends State<NodeDetailPage> {
-  String _range = '1h';
-  HistoryData? _hist;
-  List<Map<String, dynamic>> _daily = [];
   ProbeNode? _node;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetch();
-  }
-
-  Future<void> _fetch() async {
-    setState(() => _loading = true);
-    final c = AppState.instance.client;
-    try {
-      final nodes = await c.getNodes();
-      final hist = await c.getHistory(widget.nodeId, _range);
-      List<Map<String, dynamic>> daily = [];
-      try {
-        daily = await c.getTrafficDaily(widget.nodeId, 14);
-      } catch (_) {}
-      if (!mounted) return;
-      setState(() {
-        _node = nodes.firstWhere((n) => n.id == widget.nodeId,
-            orElse: () => nodes.first);
-        _hist = hist;
-        _daily = daily;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      showErr(context, e);
-    }
-  }
+  final _bodyKey = GlobalKey<NodeDetailBodyState>();
 
   @override
   Widget build(BuildContext context) {
@@ -73,35 +41,104 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
               icon: const Icon(
                   Icons.admin_panel_settings_outlined),
               onPressed: () => NodeAdmin.sheet(
-                  context, n, _fetch,
+                  context,
+                  n,
+                  () =>
+                      _bodyKey.currentState?.refresh(),
                   popAfterDelete: true),
             ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : n == null
-              ? const Center(child: Text('节点不存在'))
-              : RefreshIndicator(
-                  onRefresh: _fetch,
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    children: [
-                      _webCard(n),
-                      _probesCard(n),
-                      _chartCard('CPU / 内存 (%)', [
-                        _Series('CPU', _hist?.cpu, BocchiTheme.pinkDeep),
-                        _Series('内存', _hist?.mem, const Color(0xFF7B61FF)),
-                      ], (v) => '${v.toStringAsFixed(0)}%'),
-                      _chartCard('实时网速', [
-                        _Series('下行', _hist?.rx.map((e) => e == null ? null : e / 1024).toList(), BocchiTheme.okGreen),
-                        _Series('上行', _hist?.tx.map((e) => e == null ? null : e / 1024).toList(), BocchiTheme.pinkDeep),
-                      ], (v) => v >= 1024 ? '${(v / 1024).toStringAsFixed(1)}M' : '${v.toStringAsFixed(0)}K'),
-                      if (_daily.isNotEmpty) _dailyCard(),
-                      _rangeCard(),
-                    ],
-                  ),
-                ),
+      body: NodeDetailBody(
+        key: _bodyKey,
+        nodeId: widget.nodeId,
+        onNode: (nn) => setState(() => _node = nn),
+      ),
+    );
+  }
+}
+
+/// 节点详情内容（可复用：独立页 / 节点 Tab 的单机分页）
+class NodeDetailBody extends StatefulWidget {
+  final String nodeId;
+  final ValueChanged<ProbeNode?>? onNode;
+  const NodeDetailBody(
+      {super.key, required this.nodeId, this.onNode});
+  @override
+  State<NodeDetailBody> createState() =>
+      NodeDetailBodyState();
+}
+
+class NodeDetailBodyState extends State<NodeDetailBody> {
+  String _range = '1h';
+  HistoryData? _hist;
+  List<Map<String, dynamic>> _daily = [];
+  ProbeNode? _node;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  void refresh() => _fetch();
+
+  Future<void> _fetch() async {
+    if (mounted) setState(() => _loading = true);
+    final c = AppState.instance.client;
+    try {
+      final nodes = await c.getNodes();
+      final hist = await c.getHistory(widget.nodeId, _range);
+      List<Map<String, dynamic>> daily = [];
+      try {
+        daily = await c.getTrafficDaily(widget.nodeId, 14);
+      } catch (_) {}
+      if (!mounted) return;
+      final nn = nodes.firstWhere((n) => n.id == widget.nodeId,
+          orElse: () => nodes.first);
+      setState(() {
+        _node = nn;
+        _hist = hist;
+        _daily = daily;
+        _loading = false;
+      });
+      widget.onNode?.call(nn);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      showErr(context, e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = _node;
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (n == null) {
+      return const Center(child: Text('节点不存在'));
+    }
+    return RefreshIndicator(
+      onRefresh: _fetch,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [
+          _webCard(n),
+          _probesCard(n),
+          _chartCard('CPU / 内存 (%)', [
+            _Series('CPU', _hist?.cpu, BocchiTheme.pinkDeep),
+            _Series('内存', _hist?.mem, const Color(0xFF7B61FF)),
+          ], (v) => '${v.toStringAsFixed(0)}%'),
+          _chartCard('实时网速', [
+            _Series('下行', _hist?.rx.map((e) => e == null ? null : e / 1024).toList(), BocchiTheme.okGreen),
+            _Series('上行', _hist?.tx.map((e) => e == null ? null : e / 1024).toList(), BocchiTheme.pinkDeep),
+          ], (v) => v >= 1024 ? '${(v / 1024).toStringAsFixed(1)}M' : '${v.toStringAsFixed(0)}K'),
+          if (_daily.isNotEmpty) _dailyCard(),
+          _rangeCard(),
+        ],
+      ),
     );
   }
 

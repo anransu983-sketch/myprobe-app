@@ -9,7 +9,7 @@ jobs:
     name: Build debug APK
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,3 +54,17 @@ jobs:
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           compression-level: 0
+
+      - name: 读取版本号
+        id: ver
+        run: |
+          V=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          echo "version=$V" >> $GITHUB_OUTPUT
+          cp build/app/outputs/flutter-apk/app-debug.apk myprobe.apk
+
+      - name: 发布 Release（应用内更新用）
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: 探针 v${{ steps.ver.outputs.version }}
+          files: myprobe.apk
