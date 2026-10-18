@@ -122,7 +122,7 @@ class _TerminalTabState extends State<TerminalTab> {
                         style: const TextStyle(
                             fontWeight: FontWeight.bold)),
                     subtitle: Text(
-                        '${n.sshUser ?? 'root'}@${n.sshHost}:${n.sshPort ?? 22}',
+                        '${n.sshUser ?? 'root'}@${AppState.instance.showIp(n.sshHost ?? '')}:${n.sshPort ?? 22}',
                         style: const TextStyle(
                             fontFamily: 'monospace')),
                     trailing: const Icon(
@@ -164,7 +164,8 @@ class _TerminalTabState extends State<TerminalTab> {
                     fontSize: 18,
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Text('${n.sshUser ?? 'root'}@${n.sshHost}',
+            Text(
+                '${n.sshUser ?? 'root'}@${AppState.instance.showIp(n.sshHost ?? '')}',
                 style: const TextStyle(
                     color: BocchiTheme.inkSoft,
                     fontFamily: 'monospace')),

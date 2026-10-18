@@ -56,12 +56,22 @@ class _NodesPageState extends State<NodesPage> {
   Widget build(BuildContext context) {
     final online =
         _nodes.where((n) => n.online).length;
-    return Scaffold(
+    return AnimatedBuilder(
+      animation: AppState.instance,
+      builder: (_, __) => Scaffold(
       appBar: GradientAppBar(
         title:
             '🎸 探针${_nodes.isEmpty ? '' : '  $online/${_nodes.length} 在线'}',
         fontSize: 18,
         actions: [
+          IconButton(
+            icon: Icon(AppState.instance.hideIp
+                ? Icons.visibility_off
+                : Icons.visibility),
+            tooltip: '显示/隐藏 IP',
+            onPressed: () =>
+                AppState.instance.toggleHideIp(),
+          ),
           IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () => _fetch()),
@@ -96,7 +106,8 @@ class _NodesPageState extends State<NodesPage> {
                             _fetch(silent: true)),
                   ),
                 ),
-    );
+      ),
+      );
   }
 }
 
@@ -157,7 +168,7 @@ class _NodeCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${n.hostname} · ${n.ip}',
+                  '${n.hostname} · ${AppState.instance.showIp(n.ip)}',
                   style: const TextStyle(
                       fontSize: 12,
                       color: BocchiTheme.inkSoft),

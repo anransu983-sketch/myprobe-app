@@ -110,7 +110,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
     final rows = [
       ['状态', n.online ? '在线' : '离线'],
       ['系统', n.os.isEmpty ? '--' : n.os],
-      ['IP', n.ip.isEmpty ? '--' : n.ip],
+      ['IP', AppState.instance.showIp(n.ip)],
       ['负载', n.load1?.toStringAsFixed(2) ?? '--'],
       ['运行', fmtUptime(n.uptime)],
       ['内存', '${gb(n.memTotal)}'],
