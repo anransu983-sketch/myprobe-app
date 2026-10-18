@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../state.dart';
 import '../api.dart';
@@ -328,6 +329,109 @@ class _NodeOrderPageState extends State<NodeOrderPage> {
     }
   }
 
+  /// ➕ 添加节点：填 ID+显示名 → 生成 agent 一键安装命令 → 复制去新机器跑
+  Future<void> _addNodeDialog(BuildContext context) async {
+    final nidC = TextEditingController();
+    final nameC = TextEditingController();
+    String? token;
+    String? tokenErr;
+    try {
+      token = await AppState.instance.client.agentToken();
+    } catch (e) {
+      tokenErr = '$e';
+    }
+    if (!context.mounted) return;
+    final base =
+        AppState.instance.client.baseUrl.replaceAll(RegExp(r'/+$'), '');
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) {
+          final nid =
+              nidC.text.replaceAll(RegExp(r'\s+'), '');
+          final nm = nameC.text.trim();
+          final cmd = token == null
+              ? ''
+              : 'curl -fsSL $base/dl/agent-install.sh | bash -s -- $base $token $nid "${nm.isEmpty ? nid : nm}"';
+          return AlertDialog(
+            title: const Text('➕ 添加节点'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  if (tokenErr != null)
+                    Text('取 Token 失败：$tokenErr',
+                        style: const TextStyle(
+                            color: BocchiTheme.warnRed)),
+                  TextField(
+                    controller: nidC,
+                    decoration: const InputDecoration(
+                        labelText: '节点 ID（英文，如 de-vps）'),
+                    onChanged: (_) => setS(() {}),
+                  ),
+                  TextField(
+                    controller: nameC,
+                    decoration: const InputDecoration(
+                        labelText: '显示名（如 德国CF）'),
+                    onChanged: (_) => setS(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('去新机器上粘贴运行：',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: BocchiTheme.inkSoft)),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: BocchiTheme.pinkLight
+                          .withValues(alpha: 0.4),
+                      borderRadius:
+                          BorderRadius.circular(8),
+                    ),
+                    child: SelectableText(
+                      token == null
+                          ? '正在获取 Token…'
+                          : nid.isEmpty
+                              ? '请先填写节点 ID'
+                              : cmd,
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: BocchiTheme.ink),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () =>
+                      Navigator.pop(ctx),
+                  child: const Text('关闭')),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                    backgroundColor:
+                        BocchiTheme.pinkDeep),
+                onPressed: (token == null || nid.isEmpty)
+                    ? null
+                    : () async {
+                        await Clipboard.setData(
+                            ClipboardData(text: cmd));
+                        if (ctx.mounted) {
+                          showOk(ctx, '已复制，去新机器粘贴运行');
+                        }
+                      },
+                child: const Text('复制命令'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -338,6 +442,11 @@ class _NodeOrderPageState extends State<NodeOrderPage> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.add, color: Colors.white),
+            tooltip: '添加节点',
+            onPressed: () => _addNodeDialog(context),
+          ),
           TextButton(
             onPressed: _saving ? null : _save,
             child: _saving

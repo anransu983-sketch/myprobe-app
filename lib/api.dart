@@ -221,6 +221,15 @@ class MyProbeClient {
   Future<void> nodeMeta(String nid, Map<String, dynamic> d) =>
       _sendJson('PUT', '/api/admin/node/$nid/meta', d);
 
+  Future<String?> agentToken() async {
+    final j = await _get('/api/admin/agent-token');
+    if (j is Map && j['ok'] == true) {
+      final t = j['token'];
+      if (t is String && t.isNotEmpty) return t;
+    }
+    return null;
+  }
+
   // ---------- 内置 SSH 终端 ----------
 
   Future<String> sshConnect(String nid,

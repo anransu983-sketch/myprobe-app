@@ -98,6 +98,13 @@ class NodeAdmin {
         TextEditingController(text: n.currency ?? '¥');
     String cycle =
         (n.billCycle == 'yearly') ? 'yearly' : 'monthly';
+    final sshHost =
+        TextEditingController(text: n.sshHost ?? '');
+    final sshPort = TextEditingController(
+        text: (n.sshPort ?? 22).toString());
+    final sshUser =
+        TextEditingController(text: n.sshUser ?? 'root');
+    final sshPass = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -143,6 +150,31 @@ class NodeAdmin {
                     controller: exp,
                     decoration: const InputDecoration(
                         labelText: '到期日期 YYYY-MM-DD')),
+                const SizedBox(height: 12),
+                const Text('SSH（终端用，留空则终端不显示）',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: BocchiTheme.ink)),
+                const SizedBox(height: 8),
+                TextField(
+                    controller: sshHost,
+                    decoration: const InputDecoration(
+                        labelText: 'SSH 主机（IP/域名）')),
+                TextField(
+                    controller: sshPort,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'SSH 端口（默认 22）')),
+                TextField(
+                    controller: sshUser,
+                    decoration: const InputDecoration(
+                        labelText: 'SSH 用户名（默认 root）')),
+                TextField(
+                    controller: sshPass,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                        labelText:
+                            'SSH 密码${n.sshReady ? '（已保存，留空不改）' : ''}')),
               ],
             ),
           ),
@@ -159,14 +191,22 @@ class NodeAdmin {
     );
     if (ok == true) {
       try {
-        await AppState.instance.client.nodeMeta(n.id, {
+        final d = <String, dynamic>{
           'price': price.text.trim(),
           'quota_gb': quota.text.trim(),
           'currency': currency.text.trim(),
           'bill_cycle': cycle,
           'buy_date': buy.text.trim(),
           'expire_date': exp.text.trim(),
-        });
+          'ssh_host': sshHost.text.trim(),
+          'ssh_port': sshPort.text.trim(),
+          'ssh_user': sshUser.text.trim(),
+        };
+        // 密码留空=不改（跟网页端一致）
+        if (sshPass.text.isNotEmpty) {
+          d['ssh_password'] = sshPass.text;
+        }
+        await AppState.instance.client.nodeMeta(n.id, d);
         showOk(context, '已保存');
         onChanged();
       } catch (e) {
