@@ -28,10 +28,4 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
-    <query>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT" />
-            <data android:mimeType="text/plain" />
-        </intent>
-    </query>
 </manifest>
