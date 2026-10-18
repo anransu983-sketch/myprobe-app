@@ -3,6 +3,7 @@ import 'theme.dart';
 import 'state.dart';
 import 'pages/nodes_page.dart';
 import 'pages/probes_page.dart';
+import 'pages/terminal_page.dart';
 import 'pages/settings_page.dart';
 
 void main() {
@@ -59,22 +60,24 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int _idx = 0;
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: AppState.instance,
       builder: (_, __) {
+        final app = AppState.instance;
         final pages = [
           const NodesPage(),
           const ProbesPage(),
+          const TerminalTab(),
           const SettingsPage(),
         ];
         return Scaffold(
-          body: IndexedStack(index: _idx, children: pages),
-          bottomNavigationBar: BottomNavigationBar(            currentIndex: _idx,
-            onTap: (i) => setState(() => _idx = i),
+          body: IndexedStack(index: app.tabIndex, children: pages),
+          bottomNavigationBar: BottomNavigationBar(
+            currentIndex: app.tabIndex,
+            onTap: (i) => app.goTab(i),
+            type: BottomNavigationBarType.fixed,
             items: [
               const BottomNavigationBarItem(
                   icon: Icon(Icons.dns_outlined),
@@ -84,6 +87,10 @@ class _HomePageState extends State<HomePage> {
                   icon: Icon(Icons.speed_outlined),
                   activeIcon: Icon(Icons.speed),
                   label: '拨测'),
+              const BottomNavigationBarItem(
+                  icon: Icon(Icons.terminal_outlined),
+                  activeIcon: Icon(Icons.terminal),
+                  label: '终端'),
               BottomNavigationBarItem(
                 icon: AppState.instance.client.admin
                     ? const Icon(Icons.admin_panel_settings)

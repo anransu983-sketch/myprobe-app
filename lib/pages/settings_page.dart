@@ -4,6 +4,8 @@ import '../api.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../ui.dart';
+import '../widgets/widgets.dart';
+import 'node_admin.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -30,7 +32,7 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (_, __) {
         final c = AppState.instance.client;
         return Scaffold(
-          appBar: AppBar(title: const Text('设置')),
+          appBar: const GradientAppBar(title: '🎸 设置'),
           body: ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
@@ -293,8 +295,12 @@ class _NodeOrderPageState extends State<NodeOrderPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('节点卡片排序'),
+      appBar: GradientAppBar(
+        title: '节点卡片排序',
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,
@@ -328,8 +334,34 @@ class _NodeOrderPageState extends State<NodeOrderPage> {
                     leading: Text('${i + 1}',
                         style: const TextStyle(
                             color: BocchiTheme.inkSoft)),
-                    title: Text(nd.name.isEmpty ? nd.id : nd.name),
-                    trailing: const Icon(Icons.drag_handle),
+                    title: Text(
+                        nd.name.isEmpty ? nd.id : nd.name),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit,
+                              size: 20,
+                              color: BocchiTheme.inkSoft),
+                          tooltip: '改名',
+                          onPressed: () =>
+                              NodeAdmin.renameDialog(
+                                  context, nd, _fetch),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                              Icons.delete_outline,
+                              size: 20,
+                              color: BocchiTheme.warnRed),
+                          tooltip: '删除',
+                          onPressed: () =>
+                              NodeAdmin.deleteNode(
+                                  context, nd, _fetch),
+                        ),
+                        const Icon(Icons.drag_handle,
+                            color: BocchiTheme.inkSoft),
+                      ],
+                    ),
                   ),
                 );
               },

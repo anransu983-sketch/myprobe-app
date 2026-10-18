@@ -62,8 +62,9 @@ class _ProbesPageState extends State<ProbesPage> {
   Widget build(BuildContext context) {
     final list = _filtered;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('拨测${_tasks.isEmpty ? '' : '（${_tasks.length}）'}'),
+      appBar: GradientAppBar(
+        title: '🎸 拨测${_tasks.isEmpty ? '' : '（${_tasks.length}）'}',
+        fontSize: 18,
         actions: [
           IconButton(
               icon: const Icon(Icons.refresh),
@@ -248,6 +249,9 @@ class _TaskTile extends StatelessWidget {
                           _menu(context, v),
                       itemBuilder: (_) => [
                         PopupMenuItem(
+                            value: 'edit',
+                            child: const Text('编辑')),
+                        PopupMenuItem(
                             value: 'toggle',
                             child: Text(
                                 t.enabled ? '停用' : '启用')),
@@ -270,7 +274,11 @@ class _TaskTile extends StatelessWidget {
                       fontSize: 12,
                       color: BocchiTheme.inkSoft)),
               const SizedBox(height: 6),
-              MiniBars(bars: t.bars),
+              PinkBars(
+                latencies:
+                    t.bars.map((b) => b.latency).toList(),
+                oks: t.bars.map((b) => b.ok).toList(),
+              ),
             ],
           ),
         ),
@@ -281,7 +289,9 @@ class _TaskTile extends StatelessWidget {
   Future<void> _menu(BuildContext context, String v) async {
     final c = AppState.instance.client;
     try {
-      if (v == 'toggle') {
+      if (v == 'edit') {
+        await _editDialog(context);
+      } else if (v == 'toggle') {
         await c.probeEnable(task.id, !task.enabled);
         showOk(context, task.enabled ? '已停用' : '已启用');
       } else if (v == 'del') {
@@ -350,6 +360,91 @@ class _TaskTile extends StatelessWidget {
       onChanged();
     } catch (e) {
       if (context.mounted) showErr(context, e);
+    }
+  }
+
+  Future<void> _editDialog(BuildContext context) async {
+    final name = TextEditingController(text: task.name);
+    final host = TextEditingController(text: task.host);
+    final port =
+        TextEditingController(text: '${task.port}');
+    String type = task.type;
+    final interval = TextEditingController(
+        text: '${task.interval}');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: const Text('编辑拨测任务'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                    controller: name,
+                    decoration: const InputDecoration(
+                        labelText: '名称，如 浙江移动')),
+                DropdownButtonFormField<String>(
+                  initialValue: type,
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'tcp', child: Text('TCP')),
+                    DropdownMenuItem(
+                        value: 'ping',
+                        child: Text('Ping')),
+                    DropdownMenuItem(
+                        value: 'http',
+                        child: Text('HTTP')),
+                  ],
+                  onChanged: (v) =>
+                      setS(() => type = v ?? 'tcp'),
+                  decoration:
+                      const InputDecoration(labelText: '类型'),
+                ),
+                TextField(
+                    controller: host,
+                    decoration: const InputDecoration(
+                        labelText: '目标（IP/域名）')),
+                if (type == 'tcp')
+                  TextField(
+                      controller: port,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                          labelText: 'TCP 端口')),
+                TextField(
+                    controller: interval,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: '间隔（秒）')),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('保存')),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      try {
+        await AppState.instance.client.probeUpdate(task.id, {
+          'name': name.text.trim(),
+          'type': type,
+          'host': host.text.trim(),
+          'port': int.tryParse(port.text.trim()) ?? 0,
+          'interval':
+              int.tryParse(interval.text.trim()) ?? 60,
+        });
+        if (context.mounted) showOk(context, '已保存');
+        onChanged();
+      } catch (e) {
+        if (context.mounted) showErr(context, e);
+      }
     }
   }
 }

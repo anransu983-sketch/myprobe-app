@@ -138,3 +138,111 @@ class OnlineDot extends StatelessWidget {
     );
   }
 }
+
+/// 网页版风格：全粉小柱（延迟条），失败为浅灰粉
+class PinkBars extends StatelessWidget {
+  final List<double?> latencies; // null/<=0 视为失败
+  final List<bool>? oks;
+  final double height;
+  const PinkBars(
+      {super.key, required this.latencies, this.oks, this.height = 30});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: CustomPaint(
+          painter: _PinkBarsPainter(latencies, oks)),
+    );
+  }
+}
+
+class _PinkBarsPainter extends CustomPainter {
+  final List<double?> latencies;
+  final List<bool>? oks;
+  _PinkBarsPainter(this.latencies, this.oks);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (latencies.isEmpty) {
+      final p = Paint()..color = BocchiTheme.pinkLight;
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromLTWH(0, size.height / 2 - 1, size.width, 2),
+              const Radius.circular(1)),
+          p);
+      return;
+    }
+    double maxLat = 1;
+    for (var i = 0; i < latencies.length; i++) {
+      final ok = oks == null || i >= oks!.length || oks![i];
+      final l = latencies[i];
+      if (ok && l != null && l > maxLat) maxLat = l;
+    }
+    final n = latencies.length;
+    final gap = 2.0;
+    final w = (size.width - gap * (n - 1)) / n;
+    for (var i = 0; i < n; i++) {
+      final ok = oks == null || i >= oks!.length || oks![i];
+      final l = latencies[i];
+      final good = ok && l != null && l > 0;
+      final h = good
+          ? (4 + (size.height - 4) * (l / maxLat))
+              .clamp(4.0, size.height)
+          : 4.0;
+      final x = i * (w + gap);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, size.height - h, w < 1 ? 1 : w, h),
+          const Radius.circular(1.5),
+        ),
+        Paint()
+          ..color =
+              good ? BocchiTheme.pinkDeep : BocchiTheme.pinkLight,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PinkBarsPainter old) => true;
+}
+
+/// 网页版风格渐变标题栏（粉→深粉）
+class GradientAppBar extends StatelessWidget
+    implements PreferredSizeWidget {
+  final String title;
+  final List<Widget>? actions;
+  final Widget? leading;
+  final double fontSize;
+  const GradientAppBar(
+      {super.key,
+      required this.title,
+      this.actions,
+      this.leading,
+      this.fontSize = 20});
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBar(
+      leading: leading,
+      title: Text(title,
+          style: TextStyle(
+              fontWeight: FontWeight.bold, fontSize: fontSize)),
+      centerTitle: true,
+      actions: actions,
+      flexibleSpace: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFFF06292), BocchiTheme.pinkDeep],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+      ),
+    );
+  }
+}

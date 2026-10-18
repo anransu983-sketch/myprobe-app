@@ -31,4 +31,10 @@ class AppState extends ChangeNotifier {
     await client.logout();
     notifyListeners();
   }
+
+  int tabIndex = 0;
+  void goTab(int i) {
+    tabIndex = i;
+    notifyListeners();
+  }
 }

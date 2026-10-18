@@ -4,6 +4,8 @@ import '../state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../ui.dart';
+import '../widgets/widgets.dart';
+import 'node_admin.dart';
 
 const _ranges = ['1h', '6h', '24h', '7d'];
 const _rangeLabels = {'1h': '1小时', '6h': '6小时', '24h': '24小时', '7d': '7天'};
@@ -57,13 +59,22 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
   Widget build(BuildContext context) {
     final n = _node;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(n == null ? '节点详情' : (n.name.isEmpty ? n.id : n.name)),
+      appBar: GradientAppBar(
+        title: n == null
+            ? '节点详情'
+            : (n.name.isEmpty ? n.id : n.name),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         actions: [
           if (AppState.instance.client.admin && n != null)
             IconButton(
-              icon: const Icon(Icons.admin_panel_settings_outlined),
-              onPressed: () => _adminSheet(n),
+              icon: const Icon(
+                  Icons.admin_panel_settings_outlined),
+              onPressed: () => NodeAdmin.sheet(
+                  context, n, _fetch,
+                  popAfterDelete: true),
             ),
         ],
       ),
@@ -77,6 +88,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     children: [
                       _infoCard(n),
+                      _probesCard(n),
                       _chartCard('CPU / 内存 (%)', [
                         _Series('CPU', _hist?.cpu, BocchiTheme.pinkDeep),
                         _Series('内存', _hist?.mem, const Color(0xFF7B61FF)),
@@ -302,189 +314,104 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
     );
   }
 
-  // ---------- 管理员操作 ----------
-
-  void _adminSheet(ProbeNode n) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => SafeArea(
+  /// 网页版风格：探测目标表（延迟/丢包 + 粉条）
+  Widget _probesCard(ProbeNode n) {
+    final ps = n.nodeProbes;
+    if (ps.isEmpty) return const SizedBox.shrink();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ListTile(
-                leading: const Icon(Icons.edit),
-                title: const Text('重命名节点'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _renameDialog(n);
-                }),
-            ListTile(
-                leading: const Icon(Icons.tune),
-                title: const Text('计费 / 到期信息'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _metaDialog(n);
-                }),
-            ListTile(
-                leading: const Icon(Icons.delete_outline,
-                    color: BocchiTheme.warnRed),
-                title: const Text('删除节点',
-                    style: TextStyle(color: BocchiTheme.warnRed)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _deleteNode(n);
-                }),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _renameDialog(ProbeNode n) async {
-    final c = TextEditingController(text: n.name);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('重命名节点'),
-        content: TextField(
-            controller: c,
-            decoration: const InputDecoration(labelText: '节点名称')),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('保存')),
-        ],
-      ),
-    );
-    if (ok == true && c.text.trim().isNotEmpty) {
-      try {
-        await AppState.instance.client.nodeRename(n.id, c.text.trim());
-        showOk(context, '已重命名');
-        _fetch();
-      } catch (e) {
-        showErr(context, e);
-      }
-    }
-  }
-
-  Future<void> _metaDialog(ProbeNode n) async {
-    final price = TextEditingController(
-        text: (n.price ?? '').toString());
-    final quota = TextEditingController(
-        text: n.quotaGb > 0 ? n.quotaGb.toStringAsFixed(0) : '');
-    final buy = TextEditingController(text: n.buyDate ?? '');
-    final exp = TextEditingController(text: n.expireDate ?? '');
-    final currency = TextEditingController(text: n.currency ?? '¥');
-    String cycle = (n.billCycle == 'yearly') ? 'yearly' : 'monthly';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => AlertDialog(
-          title: const Text('计费 / 到期信息'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            const Text('探测目标',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: BocchiTheme.ink)),
+            const SizedBox(height: 4),
+            const Row(
               children: [
-                TextField(
-                    controller: price,
-                    keyboardType: TextInputType.number,
-                    decoration:
-                        const InputDecoration(labelText: '价格（数字）')),
-                TextField(
-                    controller: quota,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: '流量配额 GB（0=不限）')),
-                TextField(
-                    controller: currency,
-                    decoration:
-                        const InputDecoration(labelText: '货币符号')),
-                DropdownButtonFormField<String>(
-                  initialValue: cycle,
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'monthly', child: Text('按月')),
-                    DropdownMenuItem(
-                        value: 'yearly', child: Text('按年')),
-                  ],
-                  onChanged: (v) =>
-                      setS(() => cycle = v ?? 'monthly'),
-                  decoration:
-                      const InputDecoration(labelText: '计费周期'),
-                ),
-                TextField(
-                    controller: buy,
-                    decoration: const InputDecoration(
-                        labelText: '购买日期 YYYY-MM-DD')),
-                TextField(
-                    controller: exp,
-                    decoration: const InputDecoration(
-                        labelText: '到期日期 YYYY-MM-DD')),
+                Expanded(
+                    flex: 3,
+                    child: Text('目标',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color:
+                                BocchiTheme.inkSoft))),
+                Expanded(
+                    flex: 2,
+                    child: Text('延迟',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color:
+                                BocchiTheme.inkSoft))),
+                Expanded(
+                    flex: 2,
+                    child: Text('丢包',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color:
+                                BocchiTheme.inkSoft))),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消')),
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('保存')),
+            const Divider(height: 12),
+            ...ps.map((p) => Padding(
+                  padding:
+                      const EdgeInsets.only(bottom: 10),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: Text(p.name,
+                                style: const TextStyle(
+                                    fontSize: 13)),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              p.latencyMs == null
+                                  ? '--'
+                                  : '${p.latencyMs!.toStringAsFixed(0)} ms',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight:
+                                      FontWeight.w600),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              p.lossPct == null
+                                  ? '--'
+                                  : '${p.lossPct!.toStringAsFixed(1)}%',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      PinkBars(
+                          latencies: p.histLat,
+                          oks: p.bars,
+                          height: 26),
+                    ],
+                  ),
+                )),
           ],
         ),
       ),
     );
-    if (ok == true) {
-      try {
-        await AppState.instance.client.nodeMeta(n.id, {
-          'price': price.text.trim(),
-          'quota_gb': quota.text.trim(),
-          'currency': currency.text.trim(),
-          'bill_cycle': cycle,
-          'buy_date': buy.text.trim(),
-          'expire_date': exp.text.trim(),
-        });
-        showOk(context, '已保存');
-        _fetch();
-      } catch (e) {
-        showErr(context, e);
-      }
-    }
   }
 
-  Future<void> _deleteNode(ProbeNode n) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('删除节点'),
-        content: Text('确定删除「${n.name}」吗？历史数据会一并清除。'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('删除',
-                  style: TextStyle(color: BocchiTheme.warnRed))),
-        ],
-      ),
-    );
-    if (ok == true) {
-      try {
-        await AppState.instance.client.nodeDelete(n.id);
-        showOk(context, '已删除');
-        if (mounted) Navigator.pop(context);
-      } catch (e) {
-        showErr(context, e);
-      }
-    }
-  }
+  // ---------- 管理员操作（见 node_admin.dart） ----------
 }
 
 class _Series {

@@ -29,6 +29,11 @@ class ProbeNode {
   final double quotaGb;
   final double quotaPct;
   final int lastSeen;
+  final String? sshHost;
+  final int? sshPort;
+  final String? sshUser;
+  final bool sshReady;
+  final List<NodeProbe> nodeProbes;
 
   ProbeNode({
     required this.id,
@@ -59,6 +64,11 @@ class ProbeNode {
     this.quotaGb = 0,
     this.quotaPct = 0,
     this.lastSeen = 0,
+    this.sshHost,
+    this.sshPort,
+    this.sshUser,
+    this.sshReady = false,
+    this.nodeProbes = const [],
   });
 
   static double? _d(dynamic v) =>
@@ -95,6 +105,14 @@ class ProbeNode {
         quotaGb: _d(j['quota_gb']) ?? 0,
         quotaPct: _d(j['quota_pct']) ?? 0,
         lastSeen: _i(j['last_seen']) ?? 0,
+        sshHost: j['ssh_host']?.toString(),
+        sshPort: _i(j['ssh_port']),
+        sshUser: j['ssh_user']?.toString(),
+        sshReady: j['ssh_ready'] == true,
+        nodeProbes: ((j['probes'] as List?) ?? [])
+            .map((e) =>
+                NodeProbe.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 }
 
@@ -113,6 +131,44 @@ class ProbeBar {
         loss:
             j['loss'] == null ? null : (j['loss'] as num).toDouble(),
         ok: j['ok'] == true,
+      );
+}
+
+/// 单节点视角的拨测结果（/api/nodes 里 probes 字段）
+class NodeProbe {
+  final int taskId;
+  final String name;
+  final double? latencyMs;
+  final double? lossPct;
+  final int? ts;
+  final List<bool> bars; // 是否可达历史，最老在前
+  final List<double?> histLat;
+  NodeProbe({
+    required this.taskId,
+    required this.name,
+    this.latencyMs,
+    this.lossPct,
+    this.ts,
+    this.bars = const [],
+    this.histLat = const [],
+  });
+  factory NodeProbe.fromJson(Map<String, dynamic> j) => NodeProbe(
+        taskId: (j['task_id'] as num?)?.toInt() ?? 0,
+        name: '${j['name'] ?? ''}',
+        latencyMs: j['latency_ms'] == null
+            ? null
+            : (j['latency_ms'] as num).toDouble(),
+        lossPct: j['loss_pct'] == null
+            ? null
+            : (j['loss_pct'] as num).toDouble(),
+        ts: (j['ts'] as num?)?.toInt(),
+        bars: ((j['bars'] as List?) ?? [])
+            .map((e) => e == 1 || e == true)
+            .toList(),
+        histLat: ((j['hist_lat'] as List?) ?? [])
+            .map((e) =>
+                e == null ? null : (e as num).toDouble())
+            .toList(),
       );
 }
 

@@ -220,4 +220,43 @@ class MyProbeClient {
 
   Future<void> nodeMeta(String nid, Map<String, dynamic> d) =>
       _sendJson('PUT', '/api/admin/node/$nid/meta', d);
+
+  // ---------- 内置 SSH 终端 ----------
+
+  Future<String> sshConnect(String nid,
+      {String? password, int cols = 100, int rows = 30}) async {
+    final j = await _sendJson('POST', '/api/admin/ssh/connect', {
+      'node_id': nid,
+      if (password != null && password.isNotEmpty)
+        'password': password,
+      'cols': cols,
+      'rows': rows,
+    });
+    return '${j['session_id']}';
+  }
+
+  Future<void> sshInput(String sid, String data) =>
+      _sendJson('POST', '/api/admin/ssh/input',
+          {'session_id': sid, 'data': data});
+
+  /// 返回 {'data': 文本, 'closed': 是否断开}
+  Future<Map<String, dynamic>> sshPoll(String sid) async {
+    final j = await _get('/api/admin/ssh/poll',
+        {'session_id': sid}) as Map<String, dynamic>;
+    if (j['ok'] != true) {
+      if (j['closed'] == true) return {'data': '', 'closed': true};
+      throw ApiError('${j['error'] ?? '会话异常'}');
+    }
+    return {
+      'data': '${j['data'] ?? ''}',
+      'closed': j['closed'] == true
+    };
+  }
+
+  Future<void> sshResize(String sid, int cols, int rows) =>
+      _sendJson('POST', '/api/admin/ssh/resize',
+          {'session_id': sid, 'cols': cols, 'rows': rows});
+
+  Future<void> sshClose(String sid) =>
+      _sendJson('POST', '/api/admin/ssh/close', {'session_id': sid});
 }
