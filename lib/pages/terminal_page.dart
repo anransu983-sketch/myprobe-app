@@ -327,6 +327,7 @@ class _TerminalTabState extends State<TerminalTab> {
           .sshConnectCustom(host, port, user, p),
       recent: _RecentConn('$user@$host', host, user, port, 0),
     );
+    _qPw.clear();
   }
 
   /// ⭐ 常用连接
