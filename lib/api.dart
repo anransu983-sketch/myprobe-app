@@ -280,4 +280,93 @@ class MyProbeClient {
 
   Future<void> sshClose(String sid) =>
       _sendJson('POST', '/api/admin/ssh/close', {'session_id': sid});
+
+  // ---------- 告警规则 ----------
+
+  Future<List<Map<String, dynamic>>> alertRules() async {
+    final j = await _get('/api/admin/rules') as Map<String, dynamic>;
+    return (j['rules'] as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> alertRuleSave({
+    int? id,
+    required String name,
+    required String metric,
+    required double threshold,
+    required int duration,
+    required bool enabled,
+  }) {
+    final body = {
+      'name': name,
+      'metric': metric,
+      'threshold': threshold,
+      'duration': duration,
+      'enabled': enabled,
+    };
+    return id == null
+        ? _sendJson('POST', '/api/admin/rules', body)
+        : _sendJson('PUT', '/api/admin/rules/$id', body);
+  }
+
+  Future<void> alertRuleDelete(int id) =>
+      _sendJson('DELETE', '/api/admin/rules/$id', {});
+
+  // ---------- 通知渠道 ----------
+
+  Future<List<Map<String, dynamic>>> alertChannels() async {
+    final j = await _get('/api/admin/channels') as Map<String, dynamic>;
+    return (j['channels'] as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> alertChannelSave({
+    int? id,
+    required String type,
+    required String name,
+    required Map<String, dynamic> config,
+    required bool enabled,
+  }) {
+    final body = {
+      'type': type,
+      'name': name,
+      'config': config,
+      'enabled': enabled,
+    };
+    return id == null
+        ? _sendJson('POST', '/api/admin/channels', body)
+        : _sendJson('PUT', '/api/admin/channels/$id', body);
+  }
+
+  Future<void> alertChannelDelete(int id) =>
+      _sendJson('DELETE', '/api/admin/channels/$id', {});
+
+  Future<void> alertChannelTest(int id) =>
+      _sendJson('POST', '/api/admin/channels/$id/test', {});
+
+  // ---------- 主题 ----------
+
+  Future<List<Map<String, dynamic>>> themes() async {
+    final j = await _get('/api/admin/themes') as Map<String, dynamic>;
+    return (j['themes'] as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> themeActivate(String tid) =>
+      _sendJson('POST', '/api/admin/themes/$tid/activate', {});
+
+  Future<void> themeDelete(String tid) =>
+      _sendJson('DELETE', '/api/admin/themes/$tid', {});
+
+  /// 上传主题 zip 包
+  Future<void> themeUpload(String filePath) async {
+    final uri = Uri.parse('$baseUrl/api/admin/themes/upload');
+    final req = http.MultipartRequest('POST', uri);
+    req.headers.addAll(_headers);
+    req.files
+        .add(await http.MultipartFile.fromPath('file', filePath));
+    final streamed =
+        await _http.send(req).timeout(const Duration(seconds: 60));
+    final r = await http.Response.fromStream(streamed);
+    if (r.statusCode == 401) throw NeedLogin();
+    final j = json.decode(r.body) as Map<String, dynamic>;
+    if (j['ok'] != true) throw ApiError('${j['error'] ?? '上传失败'}');
+  }
 }

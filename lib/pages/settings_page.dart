@@ -9,6 +9,7 @@ import '../ui.dart';
 import '../update.dart';
 import '../widgets/widgets.dart';
 import 'node_admin.dart';
+import 'admin_manage.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -195,6 +196,28 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
               ),
+              if (c.admin)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        const Text('管理',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: BocchiTheme.ink)),
+                        _manageTile(context, '🎨', '主题',
+                            const ThemesPage()),
+                        _manageTile(context, '🚨', '告警规则',
+                            const AlertRulesPage()),
+                        _manageTile(context, '🔔', '通知渠道',
+                            const ChannelsPage()),
+                      ],
+                    ),
+                  ),
+                ),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
@@ -238,6 +261,18 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         );
       },
+    );
+  }
+
+  Widget _manageTile(
+      BuildContext context, String emoji, String title, Widget page) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Text(emoji, style: const TextStyle(fontSize: 22)),
+      title: Text(title),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => page)),
     );
   }
 
