@@ -244,6 +244,18 @@ class MyProbeClient {
     return '${j['session_id']}';
   }
 
+  /// 直连任意主机（终端「快速连接」用，需服务端支持 host 参数）
+  Future<String> sshConnectCustom(String host, int port,
+      String user, String password) async {
+    final j = await _sendJson('POST', '/api/admin/ssh/connect', {
+      'host': host,
+      'port': port,
+      'username': user,
+      'password': password,
+    });
+    return '${j['session_id']}';
+  }
+
   Future<void> sshInput(String sid, String data) =>
       _sendJson('POST', '/api/admin/ssh/input',
           {'session_id': sid, 'data': data});

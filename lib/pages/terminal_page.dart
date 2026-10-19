@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../api.dart';
 import '../models.dart';
 import '../state.dart';
@@ -7,8 +10,37 @@ import '../theme.dart';
 import '../terminal.dart';
 import '../widgets/widgets.dart';
 
+/// 最近连接记录
+class _RecentConn {
+  final String name, host, user;
+  final int port, ts;
+  _RecentConn(this.name, this.host, this.user, this.port, this.ts);
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'host': host,
+        'user': user,
+        'port': port,
+        'ts': ts,
+      };
+  static _RecentConn fromJson(Map<String, dynamic> j) => _RecentConn(
+        '${j['name'] ?? ''}',
+        '${j['host'] ?? ''}',
+        '${j['user'] ?? 'root'}',
+        (j['port'] as num?)?.toInt() ?? 22,
+        (j['ts'] as num?)?.toInt() ?? 0,
+      );
+}
+
+String _ago(int ts) {
+  final d = DateTime.now().millisecondsSinceEpoch ~/ 1000 - ts;
+  if (d < 60) return '刚刚';
+  if (d < 3600) return '${d ~/ 60}分钟前';
+  if (d < 86400) return '${d ~/ 3600}小时前';
+  return '${d ~/ 86400}天前';
+}
 
 /// 底部第 3 个 Tab：SSH 终端（走服务端内置 Web SSH，需管理员）
+/// JuiceSSH 风格：快速连接 / 常用连接 / 探针节点 / 代码片段
 class TerminalTab extends StatefulWidget {
   const TerminalTab({super.key});
   @override
@@ -19,16 +51,32 @@ class _TerminalTabState extends State<TerminalTab> {
   List<ProbeNode>? _nodes;
   String? _err;
 
+  final _qHost = TextEditingController();
+  final _qUser = TextEditingController(text: 'root');
+  final _qPort = TextEditingController(text: '22');
+  final _qPw = TextEditingController();
+
+  List<_RecentConn> _recents = [];
+  List<String> _snippets = [];
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadLocal();
+  }
+
+  @override
+  void dispose() {
+    _qHost.dispose();
+    _qUser.dispose();
+    _qPort.dispose();
+    _qPw.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
-    setState(() {
-      _err = null;
-    });
+    setState(() => _err = null);
     try {
       final nodes = await AppState.instance.client.getNodes();
       if (mounted) setState(() => _nodes = nodes);
@@ -37,20 +85,75 @@ class _TerminalTabState extends State<TerminalTab> {
     }
   }
 
+  Future<void> _loadLocal() async {
+    final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      final rj = p.getString('mp_ssh_recent');
+      if (rj != null) {
+        try {
+          _recents = (json.decode(rj) as List)
+              .map((e) =>
+                  _RecentConn.fromJson(e as Map<String, dynamic>))
+              .toList();
+        } catch (_) {}
+      }
+      _snippets =
+          p.getStringList('mp_ssh_snippets') ?? ['df -h', 'docker ps', 'uptime'];
+    });
+  }
+
+  Future<void> _saveRecents() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString('mp_ssh_recent',
+        json.encode(_recents.map((e) => e.toJson()).toList()));
+  }
+
+  Future<void> _saveSnippets() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList('mp_ssh_snippets', _snippets);
+  }
+
+  void _addRecent(String name, String host, String user, int port) {
+    _recents.removeWhere(
+        (e) => e.host == host && e.port == port && e.user == user);
+    _recents.insert(
+        0,
+        _RecentConn(name, host, user, port,
+            DateTime.now().millisecondsSinceEpoch ~/ 1000));
+    if (_recents.length > 8) _recents = _recents.sublist(0, 8);
+    _saveRecents();
+    if (mounted) setState(() {});
+  }
+
+  void _removeRecent(_RecentConn r) {
+    _recents.remove(r);
+    _saveRecents();
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const GradientAppBar(title: '🎸 终端'),
+      appBar: GradientAppBar(
+        title: '🎸 终端',
+        actions: [
+          IconButton(
+            icon: Icon(AppState.instance.hideIp
+                ? Icons.visibility_off
+                : Icons.visibility),
+            tooltip: '显示/隐藏 IP',
+            onPressed: () => AppState.instance.toggleHideIp(),
+          ),
+        ],
+      ),
       body: AnimatedBuilder(
         animation: AppState.instance,
         builder: (_, __) {
           final admin = AppState.instance.client.admin;
-          // 详情页 💻 跳过来的：自动弹出该节点的连接框
-          final pending =
-              AppState.instance.consumeTerminalNode();
+          final pending = AppState.instance.consumeTerminalNode();
           if (pending != null && admin) {
-            WidgetsBinding.instance
-                .addPostFrameCallback((_) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) _openConnect(pending);
             });
           }
@@ -63,12 +166,10 @@ class _TerminalTabState extends State<TerminalTab> {
                       size: 48, color: BocchiTheme.pink),
                   const SizedBox(height: 12),
                   const Text('终端需要管理员登录',
-                      style:
-                          TextStyle(color: BocchiTheme.inkSoft)),
+                      style: TextStyle(color: BocchiTheme.inkSoft)),
                   const SizedBox(height: 12),
                   FilledButton(
-                    onPressed: () =>
-                        AppState.instance.goTab(3),
+                    onPressed: () => AppState.instance.goTab(3),
                     child: const Text('去登录'),
                   ),
                 ],
@@ -81,12 +182,11 @@ class _TerminalTabState extends State<TerminalTab> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text('加载失败：$_err',
-                      style: const TextStyle(
-                          color: BocchiTheme.inkSoft)),
+                      style:
+                          const TextStyle(color: BocchiTheme.inkSoft)),
                   const SizedBox(height: 12),
                   FilledButton(
-                      onPressed: _load,
-                      child: const Text('重试')),
+                      onPressed: _load, child: const Text('重试')),
                 ],
               ),
             );
@@ -99,48 +199,16 @@ class _TerminalTabState extends State<TerminalTab> {
           final nodes = _nodes!
               .where((n) => (n.sshHost ?? '').isNotEmpty)
               .toList();
-          if (nodes.isEmpty) {
-            return RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                children: const [
-                  SizedBox(height: 80),
-                  Center(
-                      child: Text(
-                          '没有配置 SSH 的节点\n请先在网页管理页给节点配好 SSH',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color:
-                                  BocchiTheme.inkSoft))),
-                ],
-              ),
-            );
-          }
           return RefreshIndicator(
             onRefresh: _load,
-            child: ListView.builder(
-              padding:
-                  const EdgeInsets.symmetric(vertical: 8),
-              itemCount: nodes.length,
-              itemBuilder: (_, i) {
-                final n = nodes[i];
-                return Card(
-                  child: ListTile(
-                    leading: OnlineDot(online: n.online),
-                    title: Text(n.name,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold)),
-                    subtitle: Text(
-                        '${n.sshUser ?? 'root'}@${AppState.instance.showIp(n.sshHost ?? '')}:${n.sshPort ?? 22}',
-                        style: const TextStyle(
-                            fontFamily: 'monospace')),
-                    trailing: const Icon(
-                        Icons.chevron_right,
-                        color: BocchiTheme.pinkDeep),
-                    onTap: () => _openConnect(n),
-                  ),
-                );
-              },
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+              children: [
+                _quickCard(),
+                if (_recents.isNotEmpty) _recentCard(),
+                _nodesCard(nodes),
+                _snippetCard(),
+              ],
             ),
           );
         },
@@ -148,9 +216,249 @@ class _TerminalTabState extends State<TerminalTab> {
     );
   }
 
-  void _openConnect(ProbeNode n) {
-    final pw = TextEditingController();
-    final client = AppState.instance.client;
+  Widget _cardHead(String emoji, String title, String sub) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('$emoji $title',
+            style: const TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 2),
+        Text(sub,
+            style: const TextStyle(
+                fontSize: 12, color: BocchiTheme.inkSoft)),
+      ],
+    );
+  }
+
+  /// ⚡ 快速连接
+  Widget _quickCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _cardHead('⚡', '快速连接', '连接到任意主机（免事先录入节点）'),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: TextField(
+                    controller: _qHost,
+                    decoration: const InputDecoration(
+                      labelText: '主机 IP/域名',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: _qUser,
+                    decoration: const InputDecoration(
+                      labelText: '用户',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: _qPort,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '端口',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _qPw,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'SSH 密码',
+                border: OutlineInputBorder(),
+                isDense: true,
+                prefixIcon: Icon(Icons.key),
+              ),
+              onSubmitted: (_) => _quickGo(),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _quickGo,
+              icon: const Icon(Icons.bolt),
+              label: const Text('连接'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _quickGo() {
+    final host = _qHost.text.trim();
+    final user = _qUser.text.trim().isEmpty ? 'root' : _qUser.text.trim();
+    final port = int.tryParse(_qPort.text.trim()) ?? 22;
+    final pw = _qPw.text;
+    if (host.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请填写主机 IP/域名')));
+      return;
+    }
+    if (pw.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请填写 SSH 密码')));
+      return;
+    }
+    _runConnect(
+      sessionTitle: '$user@$host',
+      pw: pw,
+      dial: (p) => AppState.instance.client
+          .sshConnectCustom(host, port, user, p),
+      recent: _RecentConn('$user@$host', host, user, port, 0),
+    );
+  }
+
+  /// ⭐ 常用连接
+  Widget _recentCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _cardHead('⭐', '常用连接', '最近连过的，点一下输密码直连'),
+            const SizedBox(height: 4),
+            for (final r in _recents)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                leading: const OnlineDot(online: true),
+                title: Text(r.name,
+                    style:
+                        const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(
+                  '${r.user}@${AppState.instance.showIp(r.host)}:${r.port}',
+                  style: const TextStyle(fontFamily: 'monospace'),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_ago(r.ts),
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: BocchiTheme.inkSoft)),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      color: BocchiTheme.inkSoft,
+                      onPressed: () => _removeRecent(r),
+                    ),
+                  ],
+                ),
+                onTap: () => _openCustomConnect(r),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 🖥️ 探针节点
+  Widget _nodesCard(List<ProbeNode> nodes) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _cardHead('🖥️', '探针节点', '已录入 SSH 的节点'),
+            const SizedBox(height: 4),
+            if (nodes.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('没有配置 SSH 的节点\n请先在网页管理页给节点配好 SSH',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: BocchiTheme.inkSoft)),
+              )
+            else
+              for (final n in nodes)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: OnlineDot(online: n.online),
+                  title: Text(n.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold)),
+                  subtitle: Text(
+                    '${n.sshUser ?? 'root'}@${AppState.instance.showIp(n.sshHost ?? '')}:${n.sshPort ?? 22}',
+                    style:
+                        const TextStyle(fontFamily: 'monospace'),
+                  ),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: BocchiTheme.pinkDeep),
+                  onTap: () => _openConnect(n),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 📝 代码片段
+  Widget _snippetCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _cardHead('📝', '代码片段', '常用命令存这，会话里点一下即发送'),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < _snippets.length; i++)
+                  _snippetChip(_snippets[i], i),
+                ActionChip(
+                  label: const Text('＋ 添加'),
+                  onPressed: _addSnippet,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _snippetChip(String s, int i) {
+    return GestureDetector(
+      onLongPress: () => _delSnippet(i),
+      child: ActionChip(
+        label: Text(s,
+            style: const TextStyle(fontFamily: 'monospace')),
+        onPressed: () {
+          Clipboard.setData(ClipboardData(text: s));
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('已复制到剪贴板（长按删除）')));
+        },
+      ),
+    );
+  }
+
+  void _addSnippet() {
+    final c = TextEditingController();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -162,19 +470,118 @@ class _TerminalTabState extends State<TerminalTab> {
             left: 20,
             right: 20,
             top: 20,
-            bottom:
-                MediaQuery.of(ctx).viewInsets.bottom + 20),
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('连接 ${n.name}',
+            const Text('添加代码片段',
+                style: TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: c,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '命令（不含回车，发送时自动加）',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (_) {
+                Navigator.of(ctx).pop();
+                _saveSnippet(c.text.trim());
+              },
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _saveSnippet(c.text.trim());
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _saveSnippet(String s) {
+    if (s.isEmpty) return;
+    setState(() => _snippets.add(s));
+    _saveSnippets();
+  }
+
+  void _delSnippet(int i) {
+    final s = _snippets[i];
+    setState(() => _snippets.removeAt(i));
+    _saveSnippets();
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('已删除：$s')));
+  }
+
+  /// 节点连接：密码弹窗
+  void _openConnect(ProbeNode n) {
+    _askPassword(
+      title: '连接 ${n.name}',
+      subtitle:
+          '${n.sshUser ?? 'root'}@${AppState.instance.showIp(n.sshHost ?? '')}',
+      onGo: (pw) => _runConnect(
+        sessionTitle: n.name,
+        pw: pw,
+        dial: (p) => AppState.instance.client.sshConnect(
+            n.id,
+            password: p.isEmpty ? null : p,
+            cols: 100,
+            rows: 30),
+        recent: _RecentConn(n.name, n.sshHost ?? '',
+            n.sshUser ?? 'root', n.sshPort ?? 22, 0),
+      ),
+    );
+  }
+
+  /// 常用连接：密码弹窗
+  void _openCustomConnect(_RecentConn r) {
+    _askPassword(
+      title: '连接 ${r.name}',
+      subtitle:
+          '${r.user}@${AppState.instance.showIp(r.host)}:${r.port}',
+      onGo: (pw) => _runConnect(
+        sessionTitle: r.name,
+        pw: pw,
+        dial: (p) => AppState.instance.client
+            .sshConnectCustom(r.host, r.port, r.user, p),
+        recent: r,
+      ),
+    );
+  }
+
+  void _askPassword({
+    required String title,
+    required String subtitle,
+    required void Function(String pw) onGo,
+  }) {
+    final pw = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title,
                 style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold)),
+                    fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Text(
-                '${n.sshUser ?? 'root'}@${AppState.instance.showIp(n.sshHost ?? '')}',
+            Text(subtitle,
                 style: const TextStyle(
                     color: BocchiTheme.inkSoft,
                     fontFamily: 'monospace')),
@@ -183,17 +590,21 @@ class _TerminalTabState extends State<TerminalTab> {
               controller: pw,
               obscureText: true,
               decoration: const InputDecoration(
-                labelText: 'SSH 密码（留空用服务端已存密码）',
+                labelText: 'SSH 密码（节点可留空用服务端已存密码）',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.key),
               ),
-              onSubmitted: (_) =>
-                  _connect(client, n, pw.text),
+              onSubmitted: (_) {
+                Navigator.of(ctx).pop();
+                onGo(pw.text);
+              },
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: () =>
-                  _connect(client, n, pw.text),
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                onGo(pw.text);
+              },
               icon: const Icon(Icons.terminal),
               label: const Text('连接'),
             ),
@@ -203,13 +614,15 @@ class _TerminalTabState extends State<TerminalTab> {
     );
   }
 
-  /// 注意：必须用页面级 context（State.context），不能用底部弹窗的 ctx——
-  /// 弹窗 pop 后其 ctx 即失效，之前版本导致 loading 菊花永远关不掉。
-  Future<void> _connect(MyProbeClient client,
-      ProbeNode n, String pw) async {
+  /// 通用连接流程：loading（必关）→ 建会话 → 进终端 → 记入常用
+  /// 用页面级 context，v1.6.1 已修菊花关不掉的 bug
+  Future<void> _runConnect({
+    required String sessionTitle,
+    required String pw,
+    required Future<String> Function(String pw) dial,
+    _RecentConn? recent,
+  }) async {
     final nav = Navigator.of(context);
-    nav.pop(); // 关底部弹窗
-    if (!mounted) return;
     var loading = true;
     unawaited(showDialog(
       context: context,
@@ -226,15 +639,16 @@ class _TerminalTabState extends State<TerminalTab> {
     }
 
     try {
-      final sid = await client.sshConnect(n.id,
-          password: pw.isEmpty ? null : pw,
-          cols: 100,
-          rows: 30);
+      final sid = await dial(pw);
       closeLoading();
+      if (recent != null) {
+        _addRecent(
+            recent.name, recent.host, recent.user, recent.port);
+      }
       if (!mounted) return;
       nav.push(MaterialPageRoute(
-          builder: (_) => TerminalScreen(
-              node: n, sessionId: sid)));
+          builder: (_) =>
+              TerminalScreen(title: sessionTitle, sessionId: sid)));
     } catch (e) {
       closeLoading();
       if (!mounted) return;
@@ -246,10 +660,10 @@ class _TerminalTabState extends State<TerminalTab> {
 
 /// 终端会话页
 class TerminalScreen extends StatefulWidget {
-  final ProbeNode node;
+  final String title;
   final String sessionId;
   const TerminalScreen(
-      {super.key, required this.node, required this.sessionId});
+      {super.key, required this.title, required this.sessionId});
 
   @override
   State<TerminalScreen> createState() =>
@@ -265,6 +679,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   bool _ctrl = false;
   bool _closed = false;
   bool _atBottom = true;
+  List<String> _snippets = [];
 
   MyProbeClient get _api => AppState.instance.client;
 
@@ -281,14 +696,20 @@ class _TerminalScreenState extends State<TerminalScreen> {
     _poll = Timer.periodic(
         const Duration(milliseconds: 300), (_) => _doPoll());
     _doPoll();
+    SharedPreferences.getInstance().then((p) {
+      if (!mounted) return;
+      setState(() {
+        _snippets = p.getStringList('mp_ssh_snippets') ??
+            ['df -h', 'docker ps', 'uptime'];
+      });
+    });
   }
 
   void _maybeScroll() {
     if (_atBottom && _scroll.hasClients) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients) {
-          _scroll
-              .jumpTo(_scroll.position.maxScrollExtent);
+          _scroll.jumpTo(_scroll.position.maxScrollExtent);
         }
       });
     }
@@ -304,8 +725,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         _closed = true;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('SSH 会话已断开')));
+              const SnackBar(content: Text('SSH 会话已断开')));
         }
       }
     } catch (_) {
@@ -331,8 +751,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     if (_ctrl && t.isNotEmpty) {
       final c = t[0].toLowerCase().codeUnitAt(0);
       if (c >= 97 && c <= 122) {
-        _send(
-            String.fromCharCode(c - 96) + t.substring(1));
+        _send(String.fromCharCode(c - 96) + t.substring(1));
       } else {
         _send(t);
       }
@@ -361,16 +780,14 @@ class _TerminalScreenState extends State<TerminalScreen> {
     super.dispose();
   }
 
-  Widget _keyBtn(String label, String seq,
-      {bool toggle = false}) {
+  Widget _keyBtn(String label, String seq, {bool toggle = false}) {
     final active = toggle && _ctrl;
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Material(
-          color: active
-              ? BocchiTheme.pinkDeep
-              : Colors.grey.shade800,
+          color:
+              active ? BocchiTheme.pinkDeep : Colors.grey.shade800,
           borderRadius: BorderRadius.circular(8),
           child: InkWell(
             borderRadius: BorderRadius.circular(8),
@@ -395,6 +812,47 @@ class _TerminalScreenState extends State<TerminalScreen> {
     );
   }
 
+  /// 📝 代码片段快捷栏：点一下即发送
+  Widget _snippetBar() {
+    if (_snippets.isEmpty) return const SizedBox.shrink();
+    return Container(
+      color: Colors.grey.shade900,
+      padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(right: 6),
+              child: Text('📝',
+                  style: TextStyle(fontSize: 14)),
+            ),
+            for (final s in _snippets)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.pink.shade200,
+                    side: const BorderSide(
+                        color: BocchiTheme.pink),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                  ),
+                  onPressed: () => _send('$s\n'),
+                  child: Text(s,
+                      style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -402,7 +860,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       appBar: AppBar(
         backgroundColor: Colors.grey.shade900,
         foregroundColor: Colors.white,
-        title: Text(widget.node.name,
+        title: Text(widget.title,
             style: const TextStyle(fontSize: 16)),
         actions: [
           IconButton(
@@ -421,8 +879,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 color: Colors.black,
                 child: ListenableBuilder(
                   listenable: _term,
-                  builder: (_, __) =>
-                      SingleChildScrollView(
+                  builder: (_, __) => SingleChildScrollView(
                     controller: _scroll,
                     padding: const EdgeInsets.all(8),
                     child: RichText(
@@ -456,6 +913,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 ],
               ),
             ),
+            _snippetBar(),
             Container(
               color: Colors.grey.shade900,
               padding:
@@ -471,8 +929,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                           fontFamily: 'monospace',
                           fontSize: 14),
                       decoration: InputDecoration(
-                        hintText:
-                            _ctrl ? 'Ctrl+?' : '输入命令…',
+                        hintText: _ctrl ? 'Ctrl+?' : '输入命令…',
                         hintStyle: TextStyle(
                             color: Colors.grey.shade500),
                         filled: true,
