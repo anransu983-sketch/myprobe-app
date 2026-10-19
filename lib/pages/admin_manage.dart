@@ -8,12 +8,24 @@ import '../widgets/widgets.dart';
 
 /// 设置 → 管理：主题 / 告警规则 / 通知渠道（需管理员）
 
-String _metricLabel(String m) =>
-    m == 'cpu' ? 'CPU%' : m == 'mem' ? '内存%' : '节点离线';
+String _metricLabel(String m) => m == 'cpu'
+    ? 'CPU%'
+    : m == 'mem'
+        ? '内存%'
+        : m == 'traffic_day'
+            ? '单日流量'
+            : m == 'traffic_month'
+                ? '月累计流量'
+                : '节点离线';
 
 String _ruleCond(Map<String, dynamic> r) {
   final m = '${r['metric']}';
   if (m == 'offline') return '节点离线';
+  if (m == 'traffic_day' || m == 'traffic_month') {
+    final t = (r['threshold'] as num?) ?? 0;
+    final ts = t == t.roundToDouble() ? '${t.toInt()}' : '$t';
+    return '${m == 'traffic_day' ? '今日流量' : '本月流量'} ≥ ${ts}GB';
+  }
   final t = (r['threshold'] as num?) ?? 0;
   final ts = t == t.roundToDouble() ? '${t.toInt()}' : '$t';
   return '${_metricLabel(m)} ≥ $ts%';
@@ -335,6 +347,12 @@ class _AlertRulesPageState extends State<AlertRulesPage> {
                   DropdownMenuItem(
                       value: 'offline',
                       child: Text('节点离线')),
+                  DropdownMenuItem(
+                      value: 'traffic_day',
+                      child: Text('单日流量')),
+                  DropdownMenuItem(
+                      value: 'traffic_month',
+                      child: Text('月累计流量')),
                 ],
                 onChanged: (v) =>
                     setS(() => metric = v ?? 'cpu'),
@@ -343,10 +361,15 @@ class _AlertRulesPageState extends State<AlertRulesPage> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: thC,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '阈值 %（1~100）',
-                    border: OutlineInputBorder(),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(
+                          decimal: true),
+                  decoration: InputDecoration(
+                    labelText: (metric == 'traffic_day' ||
+                            metric == 'traffic_month')
+                        ? '阈值 GB'
+                        : '阈值 %（1~100）',
+                    border: const OutlineInputBorder(),
                   ),
                 ),
               ],
