@@ -5,17 +5,26 @@ import '../theme.dart';
 import 'widgets.dart';
 import '../pages/node_admin.dart';
 
+/// 探测目标展示风格（预览对比用）
+enum ProbesStyle {
+  standard, // 当前版
+  slim, // 纤细版：更紧凑
+  sectioned, // 分区版：独立底色块
+}
+
 /// 手机版统一节点卡：名字+图标+余期+💻 / pills / 指标2x2 / 三统计盒 / 探测目标
 /// 全部页、单机页共用
 class PhoneNodeCard extends StatelessWidget {
   final ProbeNode node;
   final VoidCallback? onChanged;
   final VoidCallback? onTap;
+  final ProbesStyle probesStyle;
   const PhoneNodeCard(
       {super.key,
       required this.node,
       this.onChanged,
-      this.onTap});
+      this.onTap,
+      this.probesStyle = ProbesStyle.standard});
 
   static String mb(int b) =>
       b <= 0 ? '--' : '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
@@ -214,7 +223,7 @@ class PhoneNodeCard extends StatelessWidget {
                             : '状态 / IP')),
               ],
             ),
-            _RegionProbes(node: n),
+            _RegionProbes(node: n, style: probesStyle),
           ],
         ),
       ),
@@ -237,7 +246,9 @@ class PhoneNodeCard extends StatelessWidget {
 /// 手机版探测目标：地区 chips + 运营商行（名字/延迟/丢包 + 细粉条），无网页表头
 class _RegionProbes extends StatefulWidget {
   final ProbeNode node;
-  const _RegionProbes({required this.node});
+  final ProbesStyle style;
+  const _RegionProbes(
+      {required this.node, this.style = ProbesStyle.standard});
   @override
   State<_RegionProbes> createState() =>
       _RegionProbesState();
@@ -279,47 +290,32 @@ class _RegionProbesState extends State<_RegionProbes> {
     if (groups.isEmpty) return const SizedBox.shrink();
     final regions = groups.keys.toList();
     if (_region == null || !regions.contains(_region)) {
-      _region = regions.contains('浙江') ? '浙江' : regions.first;
+      _region =
+          regions.contains('浙江') ? '浙江' : regions.first;
     }
     final ps = groups[_region] ?? [];
-    return Column(
+    final slim = widget.style == ProbesStyle.slim;
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Divider(height: 28),
-        const Text('探测目标',
-            style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: BocchiTheme.ink)),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 36,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: regions.length,
-            separatorBuilder: (_, __) =>
-                const SizedBox(width: 8),
-            itemBuilder: (_, i) {
-              final r = regions[i];
-              final sel = r == _region;
-              return ChoiceChip(
-                label: Text(r),
-                selected: sel,
-                selectedColor: BocchiTheme.pinkDeep,
-                labelStyle: TextStyle(
-                    color: sel
-                        ? Colors.white
-                        : BocchiTheme.ink,
-                    fontSize: 13),
-                onSelected: (_) =>
-                    setState(() => _region = r),
-              );
-            },
-          ),
+        Row(
+          children: [
+            Text('📡 探测目标',
+                style: TextStyle(
+                    fontSize: slim ? 14 : 15,
+                    fontWeight: FontWeight.bold,
+                    color: BocchiTheme.ink)),
+            const Spacer(),
+            _RegionButton(
+              region: _region!,
+              onTap: () => _pickRegion(context, regions),
+            ),
+          ],
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: slim ? 6 : 10),
         ...ps.map((p) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.only(
+                  bottom: slim ? 8 : 12),
               child: Column(
                 crossAxisAlignment:
                     CrossAxisAlignment.start,
@@ -328,16 +324,17 @@ class _RegionProbesState extends State<_RegionProbes> {
                     children: [
                       Expanded(
                         child: Text(p.name,
-                            style: const TextStyle(
-                                fontSize: 14,
+                            style: TextStyle(
+                                fontSize:
+                                    slim ? 13 : 14,
                                 color: BocchiTheme.ink)),
                       ),
                       Text(
                         p.latencyMs == null
                             ? '--'
                             : '${p.latencyMs!.toStringAsFixed(0)} ms',
-                        style: const TextStyle(
-                            fontSize: 15,
+                        style: TextStyle(
+                            fontSize: slim ? 14 : 15,
                             fontWeight: FontWeight.w700,
                             color: BocchiTheme.ink),
                       ),
@@ -361,11 +358,167 @@ class _RegionProbesState extends State<_RegionProbes> {
                   PinkBars(
                       latencies: p.histLat,
                       oks: p.bars,
-                      height: 8),
+                      height: slim ? 5 : 8),
                 ],
               ),
             )),
       ],
+    );
+    if (widget.style == ProbesStyle.sectioned) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Divider(height: 28),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: BocchiTheme.pinkLight
+                  .withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: content,
+          ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Divider(height: slim ? 20 : 28),
+        content,
+      ],
+    );
+  }
+
+  /// 省份选择：底部弹窗网格
+  Future<void> _pickRegion(
+      BuildContext context, List<String> regions) async {
+    final sel = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: BocchiTheme.pink
+                      .withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Text('选择省份',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: BocchiTheme.ink)),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close,
+                        color: BocchiTheme.inkSoft),
+                    onPressed: () =>
+                        Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Flexible(
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 2.2,
+                  ),
+                  itemCount: regions.length,
+                  itemBuilder: (_, i) {
+                    final r = regions[i];
+                    final on = r == _region;
+                    return GestureDetector(
+                      onTap: () =>
+                          Navigator.of(ctx).pop(r),
+                      child: Container(
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: on
+                              ? BocchiTheme.pinkDeep
+                              : BocchiTheme.pinkLight
+                                  .withValues(alpha: 0.4),
+                          borderRadius:
+                              BorderRadius.circular(12),
+                        ),
+                        child: Text(r,
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: on
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                color: on
+                                    ? Colors.white
+                                    : BocchiTheme.ink)),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (sel != null && sel != _region && mounted) {
+      setState(() => _region = sel);
+    }
+  }
+}
+
+/// 省份折叠按钮：只显示当前省，点开选省
+class _RegionButton extends StatelessWidget {
+  final String region;
+  final VoidCallback onTap;
+  const _RegionButton(
+      {required this.region, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: BocchiTheme.pinkLight
+              .withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(
+              color: BocchiTheme.pinkDeep, width: 1.2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(region,
+                style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: BocchiTheme.pinkDeep)),
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_drop_down,
+                size: 20, color: BocchiTheme.pinkDeep),
+          ],
+        ),
+      ),
     );
   }
 }

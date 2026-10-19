@@ -17,7 +17,6 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final _server = TextEditingController();
   final _user = TextEditingController();
   final _pass = TextEditingController();
   bool _busy = false;
@@ -26,7 +25,6 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _server.text = AppState.instance.client.baseUrl;
     PackageInfo.fromPlatform().then((p) {
       if (mounted) setState(() => _ver = p.version);
     });
@@ -53,25 +51,17 @@ class _SettingsPageState extends State<SettingsPage> {
                           style: TextStyle(
                               fontWeight: FontWeight.w700,
                               color: BocchiTheme.ink)),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _server,
-                        decoration: const InputDecoration(
-                          hintText: 'https://probe.suanran9527.com',
-                          prefixIcon: Icon(Icons.link),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: BocchiTheme.pinkDeep,
-                            foregroundColor: Colors.white,
-                          ),
-                          onPressed: _busy ? null : _saveServer,
-                          child: const Text('保存服务器地址'),
-                        ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.link,
+                            color: BocchiTheme.pinkDeep),
+                        title: const Text('服务器地址'),
+                        trailing: const Icon(
+                            Icons.chevron_right),
+                        onTap: () => Navigator.of(context)
+                            .push(MaterialPageRoute(
+                                builder: (_) =>
+                                    const ServerAddressPage())),
                       ),
                     ],
                   ),
@@ -249,20 +239,6 @@ class _SettingsPageState extends State<SettingsPage> {
         );
       },
     );
-  }
-
-  Future<void> _saveServer() async {
-    final u = _server.text.trim();
-    if (u.isEmpty) return;
-    setState(() => _busy = true);
-    try {
-      await AppState.instance.setServer(u);
-      showOk(context, '已保存');
-    } catch (e) {
-      showErr(context, e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
   }
 
   Future<void> _doLogin() async {
@@ -512,5 +488,148 @@ class _NodeOrderPageState extends State<NodeOrderPage> {
               },
             ),
     );
+  }
+}
+
+/// 探针服务器地址子页：查看当前地址 / 更换
+class ServerAddressPage extends StatefulWidget {
+  const ServerAddressPage({super.key});
+  @override
+  State<ServerAddressPage> createState() =>
+      _ServerAddressPageState();
+}
+
+class _ServerAddressPageState extends State<ServerAddressPage> {
+  final _server = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _server.text = AppState.instance.client.baseUrl;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: GradientAppBar(
+        title: '探针服务器',
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('当前地址',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: BocchiTheme.ink)),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: BocchiTheme.okGreen
+                          .withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: BocchiTheme.okGreen
+                              .withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle,
+                            size: 18,
+                            color: BocchiTheme.okGreen),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            AppState.instance.client.baseUrl,
+                            style: const TextStyle(
+                                fontSize: 14,
+                                color: BocchiTheme.okGreen,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text('更换地址',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: BocchiTheme.ink)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _server,
+                    decoration: const InputDecoration(
+                      hintText: 'https://probe.example.com',
+                      prefixIcon: Icon(Icons.link),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                      '以 https:// 开头，末尾不要带 /。保存后会自动重连并刷新节点数据。',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: BocchiTheme.inkSoft),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            BocchiTheme.pinkDeep,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: _busy ? null : _saveServer,
+                      child: _busy
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child:
+                                  CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white),
+                            )
+                          : const Text('保存服务器地址'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveServer() async {
+    final u = _server.text.trim();
+    if (u.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      await AppState.instance.setServer(u);
+      if (mounted) {
+        showOk(context, '已保存');
+        setState(() {});
+      }
+    } catch (e) {
+      showErr(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 }
