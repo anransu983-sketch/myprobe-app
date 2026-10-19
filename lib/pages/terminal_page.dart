@@ -188,12 +188,12 @@ class _TerminalTabState extends State<TerminalTab> {
                 prefixIcon: Icon(Icons.key),
               ),
               onSubmitted: (_) =>
-                  _connect(ctx, client, n, pw.text),
+                  _connect(client, n, pw.text),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: () =>
-                  _connect(ctx, client, n, pw.text),
+                  _connect(client, n, pw.text),
               icon: const Icon(Icons.terminal),
               label: const Text('连接'),
             ),
@@ -203,30 +203,42 @@ class _TerminalTabState extends State<TerminalTab> {
     );
   }
 
-  Future<void> _connect(BuildContext ctx, MyProbeClient client,
+  /// 注意：必须用页面级 context（State.context），不能用底部弹窗的 ctx——
+  /// 弹窗 pop 后其 ctx 即失效，之前版本导致 loading 菊花永远关不掉。
+  Future<void> _connect(MyProbeClient client,
       ProbeNode n, String pw) async {
-    Navigator.of(ctx).pop();
-    showDialog(
-      context: ctx,
+    final nav = Navigator.of(context);
+    nav.pop(); // 关底部弹窗
+    if (!mounted) return;
+    var loading = true;
+    unawaited(showDialog(
+      context: context,
       barrierDismissible: false,
       builder: (_) => const Center(
           child: CircularProgressIndicator(
               color: BocchiTheme.pinkDeep)),
-    );
+    ).then((_) => loading = false));
+    void closeLoading() {
+      if (loading) {
+        loading = false;
+        nav.pop();
+      }
+    }
+
     try {
       final sid = await client.sshConnect(n.id,
           password: pw.isEmpty ? null : pw,
           cols: 100,
           rows: 30);
-      if (!ctx.mounted) return;
-      Navigator.of(ctx).pop();
-      Navigator.of(ctx).push(MaterialPageRoute(
+      closeLoading();
+      if (!mounted) return;
+      nav.push(MaterialPageRoute(
           builder: (_) => TerminalScreen(
               node: n, sessionId: sid)));
     } catch (e) {
-      if (!ctx.mounted) return;
-      Navigator.of(ctx).pop();
-      ScaffoldMessenger.of(ctx).showSnackBar(
+      closeLoading();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('连接失败：$e')));
     }
   }
