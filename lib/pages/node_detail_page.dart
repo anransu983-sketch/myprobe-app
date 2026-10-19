@@ -72,7 +72,9 @@ class NodeDetailBody extends StatefulWidget {
 
 class NodeDetailBodyState extends State<NodeDetailBody> {
   String _range = '1h';
+  String _trafficTab = 'day'; // day=今日 / week=本周
   HistoryData? _hist;
+  HistoryData? _hist24; // 流量统计·今日用（24h 上报历史）
   List<Map<String, dynamic>> _daily = [];
   ProbeNode? _node;
   bool _loading = true;
@@ -91,6 +93,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
     try {
       final nodes = await c.getNodes();
       final hist = await c.getHistory(widget.nodeId, _range);
+      final hist24 = await c.getHistory(widget.nodeId, '24h');
       List<Map<String, dynamic>> daily = [];
       try {
         daily = await c.getTrafficDaily(widget.nodeId, 14);
@@ -101,6 +104,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       setState(() {
         _node = nn;
         _hist = hist;
+        _hist24 = hist24;
         _daily = daily;
         _loading = false;
       });
@@ -135,7 +139,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             _Series('下行', _hist?.rx.map((e) => e == null ? null : e / 1024).toList(), BocchiTheme.okGreen),
             _Series('上行', _hist?.tx.map((e) => e == null ? null : e / 1024).toList(), BocchiTheme.pinkDeep),
           ], (v) => v >= 1024 ? '${(v / 1024).toStringAsFixed(1)}M' : '${v.toStringAsFixed(0)}K'),
-          if (_daily.isNotEmpty) _dailyCard(),
+          if (_daily.isNotEmpty) _trafficCard(),
           _rangeCard(),
         ],
       ),
@@ -280,52 +284,252 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
     );
   }
 
-  Widget _dailyCard() {
-    final maxV = _daily.fold<double>(
-        1, (m, e) => (e['total_gb'] as num).toDouble() > m ? (e['total_gb'] as num).toDouble() : m);
+  /// 流量统计：今日（24h 按小时）/ 本周（按天）切换，大数字 + 上下行 + 柱状图
+  Widget _trafficCard() {
+    final isDay = _trafficTab == 'day';
+    List<double> vals = [];
+    List<String> xLabels = [];
+    double downGb = 0, upGb = 0;
+    String foot = '';
+    if (isDay) {
+      final h = _hist24;
+      if (h != null) {
+        final b = _bucket24h(h);
+        vals = b.tot.map((e) => e / 1024 / 1024 / 1024).toList();
+        downGb = b.down.fold(0.0, (a, e) => a + e) / 1024 / 1024 / 1024;
+        upGb = b.up.fold(0.0, (a, e) => a + e) / 1024 / 1024 / 1024;
+        xLabels = List.generate(24, (i) => '$i');
+      }
+      foot = '按小时汇总 · 数据来自探针上报';
+    } else {
+      final week =
+          _daily.length > 7 ? _daily.sublist(_daily.length - 7) : _daily;
+      vals = week
+          .map((e) => ((e['total_gb'] as num?) ?? 0).toDouble())
+          .toList();
+      downGb = week.fold(
+          0.0, (a, e) => a + (((e['rx_gb'] as num?) ?? 0).toDouble()));
+      upGb = week.fold(
+          0.0, (a, e) => a + (((e['tx_gb'] as num?) ?? 0).toDouble()));
+      xLabels = week
+          .map((e) => (e['day'] as String? ?? '').substring(5))
+          .toList();
+      foot = '按天汇总 · 数据来自探针上报';
+    }
+    final totalGb = downGb + upGb;
+    final maxV =
+        vals.fold<double>(0.01, (m, e) => e > m ? e : m);
+    final hasData = vals.any((e) => e > 0);
+
+    Widget tab(String key, String label) {
+      final sel = _trafficTab == key;
+      return GestureDetector(
+        onTap: () => setState(() => _trafficTab = key),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 18, vertical: 7),
+          decoration: BoxDecoration(
+            color: sel ? BocchiTheme.pinkDeep : Colors.transparent,
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: sel
+                      ? Colors.white
+                      : BocchiTheme.inkSoft)),
+        ),
+      );
+    }
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('每日流量（GB）',
-                style: TextStyle(
-                    fontWeight: FontWeight.w700, color: BocchiTheme.ink)),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 120,
-              child: BarChart(
-                BarChartData(
-                  titlesData: const FlTitlesData(show: false),
-                  gridData: const FlGridData(show: false),
-                  borderData: FlBorderData(show: false),
-                  barGroups: [
-                    for (var i = 0; i < _daily.length; i++)
-                      BarChartGroupData(
-                        x: i,
-                        barRods: [
-                          BarChartRodData(
-                            toY: (_daily[i]['total_gb'] as num).toDouble(),
-                            color: BocchiTheme.pink,
-                            width: 8,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ],
-                      ),
-                  ],
+            Row(
+              children: [
+                const Text('⚡ 流量统计',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: BocchiTheme.ink)),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: BocchiTheme.pinkLight
+                        .withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      tab('day', '今日'),
+                      tab('week', '本周'),
+                    ],
+                  ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(_fmtGb(totalGb),
+                style: const TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    color: BocchiTheme.ink)),
+            const SizedBox(height: 4),
+            RichText(
+              text: TextSpan(
+                style: const TextStyle(
+                    fontSize: 12.5,
+                    color: BocchiTheme.inkSoft),
+                children: [
+                  TextSpan(
+                      text: isDay ? '今日流量 · ' : '本周流量 · '),
+                  const TextSpan(text: '下行 '),
+                  TextSpan(
+                      text: _fmtGb(downGb),
+                      style: const TextStyle(
+                          color: BocchiTheme.pinkDeep,
+                          fontWeight: FontWeight.w700)),
+                  const TextSpan(text: ' · 上行 '),
+                  TextSpan(
+                      text: _fmtGb(upGb),
+                      style: const TextStyle(
+                          color: BocchiTheme.pinkDeep,
+                          fontWeight: FontWeight.w700)),
+                ],
               ),
             ),
-            Text(
-                '近14天峰值 ${maxV.toStringAsFixed(1)}G · 最近 ${_daily.last['day']}',
-                style: const TextStyle(
-                    fontSize: 11, color: BocchiTheme.inkSoft)),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 170,
+              child: !hasData
+                  ? const Center(
+                      child: Text('暂无数据',
+                          style: TextStyle(
+                              color: BocchiTheme.inkSoft)))
+                  : BarChart(
+                      BarChartData(
+                        maxY: maxV * 1.15,
+                        titlesData: FlTitlesData(
+                          show: true,
+                          topTitles: const AxisTitles(
+                              sideTitles:
+                                  SideTitles(showTitles: false)),
+                          rightTitles: const AxisTitles(
+                              sideTitles:
+                                  SideTitles(showTitles: false)),
+                          leftTitles: const AxisTitles(
+                              sideTitles:
+                                  SideTitles(showTitles: false)),
+                          bottomTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              reservedSize: 22,
+                              getTitlesWidget: (v, meta) {
+                                final i = v.toInt();
+                                if (i < 0 ||
+                                    i >= xLabels.length) {
+                                  return const SizedBox
+                                      .shrink();
+                                }
+                                String? label;
+                                if (isDay) {
+                                  if (i % 6 == 0) {
+                                    label =
+                                        '${xLabels[i].padLeft(2, '0')}:00';
+                                  }
+                                } else {
+                                  label = xLabels[i];
+                                }
+                                if (label == null) {
+                                  return const SizedBox
+                                      .shrink();
+                                }
+                                return SideTitleWidget(
+                                  axisSide: meta.axisSide,
+                                  child: Text(label,
+                                      style: const TextStyle(
+                                          fontSize: 9.5,
+                                          color: BocchiTheme
+                                              .inkSoft)),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                        gridData: const FlGridData(show: true),
+                        borderData:
+                            FlBorderData(show: false),
+                        barGroups: [
+                          for (var i = 0;
+                              i < vals.length;
+                              i++)
+                            BarChartGroupData(
+                              x: i,
+                              barRods: [
+                                BarChartRodData(
+                                  toY: vals[i],
+                                  color: vals[i] >
+                                          maxV * 0.35
+                                      ? BocchiTheme.pinkDeep
+                                      : BocchiTheme.pink
+                                          .withValues(
+                                              alpha: 0.55),
+                                  width: isDay ? 8 : 22,
+                                  borderRadius:
+                                      BorderRadius.circular(
+                                          3),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: Text(foot,
+                  style: const TextStyle(
+                      fontSize: 11,
+                      color: BocchiTheme.inkSoft)),
+            ),
           ],
         ),
       ),
     );
   }
+
+  /// 24h 上报历史按小时桶汇总（本地时区），返回每 GB 小时的 down/up/total（bytes）
+  ({List<double> tot, List<double> down, List<double> up}) _bucket24h(
+      HistoryData h) {
+    final tot = List<double>.filled(24, 0);
+    final down = List<double>.filled(24, 0);
+    final up = List<double>.filled(24, 0);
+    final n = h.ts.length;
+    for (var i = 0; i < n; i++) {
+      final dt = (i + 1 < n)
+          ? (h.ts[i + 1] - h.ts[i]) / 1000.0
+          : 5.0;
+      if (dt <= 0 || dt > 3600) continue;
+      final hr =
+          DateTime.fromMillisecondsSinceEpoch(h.ts[i]).hour;
+      final r = (i < h.rx.length) ? (h.rx[i] ?? 0) : 0;
+      final t = (i < h.tx.length) ? (h.tx[i] ?? 0) : 0;
+      down[hr] += r * dt;
+      up[hr] += t * dt;
+      tot[hr] += (r + t) * dt;
+    }
+    return (tot: tot, down: down, up: up);
+  }
+
+  static String _fmtGb(double gb) => gb >= 1
+      ? '${gb.toStringAsFixed(1)} GB'
+      : '${(gb * 1024).toStringAsFixed(0)} MB';
 
   // ---------- 管理员操作（见 node_admin.dart） ----------
 }
