@@ -10,6 +10,7 @@ import '../update.dart';
 import '../widgets/widgets.dart';
 import 'node_admin.dart';
 import 'admin_manage.dart';
+import 'ssh_settings_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -63,6 +64,21 @@ class _SettingsPageState extends State<SettingsPage> {
                             .push(MaterialPageRoute(
                                 builder: (_) =>
                                     const ServerAddressPage())),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.key,
+                            color: BocchiTheme.pinkDeep),
+                        title: const Text('SSH 凭据'),
+                        subtitle: const Text(
+                            '各节点的 SSH 地址与 root 密码（存服务器）',
+                            style: TextStyle(fontSize: 12)),
+                        trailing: const Icon(
+                            Icons.chevron_right),
+                        onTap: () => Navigator.of(context)
+                            .push(MaterialPageRoute(
+                                builder: (_) =>
+                                    const SshCredsPage())),
                       ),
                     ],
                   ),
