@@ -108,7 +108,7 @@ Future<void> runUpdateCheck(BuildContext context) async {
   showDialog(
     context: context,
     barrierDismissible: false,
-    builder: (_) => const Center(
+    builder: (_) => Center(
         child: CircularProgressIndicator(
             color: BocchiTheme.pinkDeep)),
   );

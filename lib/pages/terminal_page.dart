@@ -162,10 +162,10 @@ class _TerminalTabState extends State<TerminalTab> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.lock_outline,
+                   Icon(Icons.lock_outline,
                       size: 48, color: BocchiTheme.pink),
                   const SizedBox(height: 12),
-                  const Text('终端需要管理员登录',
+                   Text('终端需要管理员登录',
                       style: TextStyle(color: BocchiTheme.inkSoft)),
                   const SizedBox(height: 12),
                   FilledButton(
@@ -183,7 +183,7 @@ class _TerminalTabState extends State<TerminalTab> {
                 children: [
                   Text('加载失败：$_err',
                       style:
-                          const TextStyle(color: BocchiTheme.inkSoft)),
+                           TextStyle(color: BocchiTheme.inkSoft)),
                   const SizedBox(height: 12),
                   FilledButton(
                       onPressed: _load, child: const Text('重试')),
@@ -192,7 +192,7 @@ class _TerminalTabState extends State<TerminalTab> {
             );
           }
           if (_nodes == null) {
-            return const Center(
+            return  Center(
                 child: CircularProgressIndicator(
                     color: BocchiTheme.pinkDeep));
           }
@@ -225,7 +225,7 @@ class _TerminalTabState extends State<TerminalTab> {
                 fontSize: 15, fontWeight: FontWeight.w800)),
         const SizedBox(height: 2),
         Text(sub,
-            style: const TextStyle(
+            style:  TextStyle(
                 fontSize: 12, color: BocchiTheme.inkSoft)),
       ],
     );
@@ -356,7 +356,7 @@ class _TerminalTabState extends State<TerminalTab> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(_ago(r.ts),
-                        style: const TextStyle(
+                        style:  TextStyle(
                             fontSize: 11,
                             color: BocchiTheme.inkSoft)),
                     IconButton(
@@ -385,7 +385,7 @@ class _TerminalTabState extends State<TerminalTab> {
             _cardHead('🖥️', '探针节点', '已录入 SSH 的节点'),
             const SizedBox(height: 4),
             if (nodes.isEmpty)
-              const Padding(
+               Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
                 child: Text('没有配置 SSH 的节点\n请先在网页管理页给节点配好 SSH',
                     textAlign: TextAlign.center,
@@ -405,7 +405,7 @@ class _TerminalTabState extends State<TerminalTab> {
                     style:
                         const TextStyle(fontFamily: 'monospace'),
                   ),
-                  trailing: const Icon(Icons.chevron_right,
+                  trailing:  Icon(Icons.chevron_right,
                       color: BocchiTheme.pinkDeep),
                   onTap: () => _openConnect(n),
                 ),
@@ -583,7 +583,7 @@ class _TerminalTabState extends State<TerminalTab> {
                     fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text(subtitle,
-                style: const TextStyle(
+                style:  TextStyle(
                     color: BocchiTheme.inkSoft,
                     fontFamily: 'monospace')),
             const SizedBox(height: 12),
@@ -628,7 +628,7 @@ class _TerminalTabState extends State<TerminalTab> {
     unawaited(showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(
+      builder: (_) =>  Center(
           child: CircularProgressIndicator(
               color: BocchiTheme.pinkDeep)),
     ).then((_) => loading = false));
@@ -834,7 +834,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.pink.shade200,
-                    side: const BorderSide(
+                    side:  BorderSide(
                         color: BocchiTheme.pink),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10)),

@@ -15,11 +15,16 @@ class MyProbeApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '探针',
-      theme: BocchiTheme.light,
-      home: const _Boot(),
-      debugShowCheckedModeBanner: false,
+    return AnimatedBuilder(
+      animation: AppState.instance,
+      builder: (_, __) => MaterialApp(
+        title: '探针',
+        theme: BocchiTheme.themeDataFor(AppState.instance.themeDef),
+        builder: (_, child) =>
+            AppBackground(child: child ?? const SizedBox()),
+        home: const _Boot(),
+        debugShowCheckedModeBanner: false,
+      ),
     );
   }
 }

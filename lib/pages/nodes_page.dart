@@ -112,7 +112,7 @@ class _NodesPageState extends State<NodesPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text('加载失败：$_err',
-                            style: const TextStyle(
+                            style:  TextStyle(
                                 color: BocchiTheme.inkSoft)),
                         const SizedBox(height: 12),
                         ElevatedButton(
@@ -179,7 +179,7 @@ class _NodesPageState extends State<NodesPage> {
               decoration: BoxDecoration(
                 color: sel
                     ? BocchiTheme.pinkDeep
-                    : Colors.white,
+                    : BocchiTheme.current.cardColor,
                 borderRadius: BorderRadius.circular(20),
                 border: sel
                     ? null
@@ -193,7 +193,7 @@ class _NodesPageState extends State<NodesPage> {
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: sel
-                          ? Colors.white
+                          ? BocchiTheme.onAccent
                           : BocchiTheme.ink)),
             ),
           );
@@ -216,7 +216,7 @@ class _AllPager extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (nodes.isEmpty) {
-      return const Center(
+      return  Center(
           child: Text('暂无节点',
               style:
                   TextStyle(color: BocchiTheme.inkSoft)));

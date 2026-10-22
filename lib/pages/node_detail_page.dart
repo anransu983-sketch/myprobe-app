@@ -153,7 +153,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
           children: [
-            const Text('时间范围',
+             Text('时间范围',
                 style: TextStyle(
                     color: BocchiTheme.inkSoft,
                     fontSize: 13)),
@@ -220,7 +220,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             Row(
               children: [
                 Text(title,
-                    style: const TextStyle(
+                    style:  TextStyle(
                         fontWeight: FontWeight.w700,
                         color: BocchiTheme.ink)),
                 const Spacer(),
@@ -237,7 +237,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                                 borderRadius: BorderRadius.circular(2))),
                         const SizedBox(width: 4),
                         Text(s.name,
-                            style: const TextStyle(
+                            style:  TextStyle(
                                 fontSize: 11,
                                 color: BocchiTheme.inkSoft)),
                       ],
@@ -249,7 +249,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             SizedBox(
               height: 180,
               child: !hasData
-                  ? const Center(
+                  ?  Center(
                       child: Text('暂无数据',
                           style:
                               TextStyle(color: BocchiTheme.inkSoft)))
@@ -351,7 +351,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
           children: [
             Row(
               children: [
-                const Text('⚡ 流量统计',
+                 Text('⚡ 流量统计',
                     style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -376,14 +376,14 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             ),
             const SizedBox(height: 10),
             Text(_fmtGb(totalGb),
-                style: const TextStyle(
+                style:  TextStyle(
                     fontSize: 30,
                     fontWeight: FontWeight.w800,
                     color: BocchiTheme.ink)),
             const SizedBox(height: 4),
             RichText(
               text: TextSpan(
-                style: const TextStyle(
+                style:  TextStyle(
                     fontSize: 12.5,
                     color: BocchiTheme.inkSoft),
                 children: [
@@ -392,13 +392,13 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                   const TextSpan(text: '下行 '),
                   TextSpan(
                       text: _fmtGb(downGb),
-                      style: const TextStyle(
+                      style:  TextStyle(
                           color: BocchiTheme.pinkDeep,
                           fontWeight: FontWeight.w700)),
                   const TextSpan(text: ' · 上行 '),
                   TextSpan(
                       text: _fmtGb(upGb),
-                      style: const TextStyle(
+                      style:  TextStyle(
                           color: BocchiTheme.pinkDeep,
                           fontWeight: FontWeight.w700)),
                 ],
@@ -408,7 +408,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             SizedBox(
               height: 170,
               child: !hasData
-                  ? const Center(
+                  ?  Center(
                       child: Text('暂无数据',
                           style: TextStyle(
                               color: BocchiTheme.inkSoft)))
@@ -453,7 +453,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                                 return SideTitleWidget(
                                   axisSide: meta.axisSide,
                                   child: Text(label,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontSize: 9.5,
                                           color: BocchiTheme
                                               .inkSoft)),
@@ -494,7 +494,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             const SizedBox(height: 8),
             Center(
               child: Text(foot,
-                  style: const TextStyle(
+                  style:  TextStyle(
                       fontSize: 11,
                       color: BocchiTheme.inkSoft)),
             ),

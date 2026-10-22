@@ -32,6 +32,53 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+  /// 界面主题选择卡：三款主题（波奇酱 / 夜之城·毛玻璃 / 夜之城·黄昏）
+  Widget _themeCard() {
+    final cur = AppState.instance.themeId;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+             Text('界面主题',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: BocchiTheme.ink)),
+            const SizedBox(height: 4),
+            for (final t in AppThemeDef.all)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: t.wallpaper == null
+                    ? Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: t.accent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      )
+                    : ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.asset(t.wallpaper!,
+                            width: 40, height: 40, fit: BoxFit.cover),
+                      ),
+                title: Text(t.name),
+                subtitle: Text(t.desc,
+                    style: const TextStyle(fontSize: 12)),
+                trailing: cur == t.id
+                    ? Icon(Icons.check_circle,
+                        color: BocchiTheme.pinkDeep)
+                    :  Icon(Icons.circle_outlined,
+                        color: BocchiTheme.inkSoft),
+                onTap: () => AppState.instance.setTheme(t.id),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -49,13 +96,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('探针服务器',
+                       Text('探针服务器',
                           style: TextStyle(
                               fontWeight: FontWeight.w700,
                               color: BocchiTheme.ink)),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.link,
+                        leading:  Icon(Icons.link,
                             color: BocchiTheme.pinkDeep),
                         title: const Text('服务器地址'),
                         trailing: const Icon(
@@ -67,7 +114,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.key,
+                        leading:  Icon(Icons.key,
                             color: BocchiTheme.pinkDeep),
                         title: const Text('SSH 凭据'),
                         subtitle: const Text(
@@ -84,6 +131,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
               ),
+              _themeCard(),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
@@ -92,7 +140,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     children: [
                       Row(
                         children: [
-                          const Text('管理员',
+                           Text('管理员',
                               style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   color: BocchiTheme.ink)),
@@ -145,7 +193,8 @@ class _SettingsPageState extends State<SettingsPage> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor:
                                   BocchiTheme.pinkDeep,
-                              foregroundColor: Colors.white,
+                              foregroundColor:
+                                  BocchiTheme.onAccent,
                             ),
                             onPressed:
                                 _busy ? null : _doLogin,
@@ -161,7 +210,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 : const Text('登录'),
                           ),
                         ),
-                        const Padding(
+                         Padding(
                           padding: EdgeInsets.only(top: 6),
                           child: Text(
                             '登录后可管理拨测任务与节点（增删改、启停、立即测试、改名、计费信息、排序）。',
@@ -173,7 +222,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ] else ...[
                         ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: const Icon(
+                          leading:  Icon(
                               Icons.reorder,
                               color: BocchiTheme.pinkDeep),
                           title: const Text('节点卡片排序'),
@@ -220,7 +269,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       crossAxisAlignment:
                           CrossAxisAlignment.start,
                       children: [
-                        const Text('管理',
+                         Text('管理',
                             style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 color: BocchiTheme.ink)),
@@ -240,7 +289,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('应用',
+                       Text('应用',
                           style: TextStyle(
                               fontWeight: FontWeight.w700,
                               color: BocchiTheme.ink)),
@@ -268,7 +317,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Center(
                   child: Text(
                       '探针${_ver.isEmpty ? '' : ' v$_ver'} · 数据来自自建 MyProbe',
-                      style: const TextStyle(
+                      style:  TextStyle(
                           fontSize: 12,
                           color: BocchiTheme.inkSoft)),
                 ),
@@ -405,7 +454,7 @@ class _NodeOrderPageState extends State<NodeOrderPage> {
                     onChanged: (_) => setS(() {}),
                   ),
                   const SizedBox(height: 12),
-                  const Text('去新机器上粘贴运行：',
+                   Text('去新机器上粘贴运行：',
                       style: TextStyle(
                           fontSize: 12,
                           color: BocchiTheme.inkSoft)),
@@ -424,7 +473,7 @@ class _NodeOrderPageState extends State<NodeOrderPage> {
                           : nid.isEmpty
                               ? '请先填写节点 ID'
                               : cmd,
-                      style: const TextStyle(
+                      style:  TextStyle(
                           fontSize: 12,
                           color: BocchiTheme.ink),
                     ),
@@ -504,7 +553,7 @@ class _NodeOrderPageState extends State<NodeOrderPage> {
                   key: ValueKey(nd.id),
                   child: ListTile(
                     leading: Text('${i + 1}',
-                        style: const TextStyle(
+                        style:  TextStyle(
                             color: BocchiTheme.inkSoft)),
                     title: Text(
                         nd.name.isEmpty ? nd.id : nd.name),
@@ -512,7 +561,7 @@ class _NodeOrderPageState extends State<NodeOrderPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit,
+                          icon:  Icon(Icons.edit,
                               size: 20,
                               color: BocchiTheme.inkSoft),
                           tooltip: '改名',
@@ -530,7 +579,7 @@ class _NodeOrderPageState extends State<NodeOrderPage> {
                               NodeAdmin.deleteNode(
                                   context, nd, _fetch),
                         ),
-                        const Icon(Icons.drag_handle,
+                         Icon(Icons.drag_handle,
                             color: BocchiTheme.inkSoft),
                       ],
                     ),
@@ -579,7 +628,7 @@ class _ServerAddressPageState extends State<ServerAddressPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('当前地址',
+                   Text('当前地址',
                       style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: BocchiTheme.ink)),
@@ -615,7 +664,7 @@ class _ServerAddressPageState extends State<ServerAddressPage> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  const Text('更换地址',
+                   Text('更换地址',
                       style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: BocchiTheme.ink)),
@@ -627,7 +676,7 @@ class _ServerAddressPageState extends State<ServerAddressPage> {
                       prefixIcon: Icon(Icons.link),
                     ),
                   ),
-                  const Padding(
+                   Padding(
                     padding: EdgeInsets.only(top: 8),
                     child: Text(
                       '以 https:// 开头，末尾不要带 /。保存后会自动重连并刷新节点数据。',

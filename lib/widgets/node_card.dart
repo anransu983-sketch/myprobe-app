@@ -1,3 +1,4 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../state.dart';
 import '../models.dart';
@@ -77,7 +78,7 @@ class PhoneNodeCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     n.name.isEmpty ? n.id : n.name,
-                    style: const TextStyle(
+                    style:  TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                         color: BocchiTheme.ink),
@@ -107,7 +108,7 @@ class PhoneNodeCard extends StatelessWidget {
                   ),
                 if (admin)
                   IconButton(
-                    icon: const Icon(Icons.more_vert,
+                    icon:  Icon(Icons.more_vert,
                         color: BocchiTheme.inkSoft),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
@@ -119,7 +120,7 @@ class PhoneNodeCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               '${n.hostname} · ${AppState.instance.showIp(n.ip)}',
-              style: const TextStyle(
+              style:  TextStyle(
                   fontSize: 12,
                   color: BocchiTheme.inkSoft),
             ),
@@ -228,16 +229,30 @@ class PhoneNodeCard extends StatelessWidget {
         ),
       ),
     );
+    // 玻璃主题：卡片套一层 BackdropFilter 才是真毛玻璃；
+    // 波奇酱时 inner 就是原 card，零变化。
+    Widget inner = card;
+    if (BocchiTheme.current.glass) {
+      inner = ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+              sigmaX: BocchiTheme.current.cardBlur,
+              sigmaY: BocchiTheme.current.cardBlur),
+          child: card,
+        ),
+      );
+    }
     if (onTap == null) {
       return Opacity(
-          opacity: n.online ? 1 : 0.62, child: card);
+          opacity: n.online ? 1 : 0.62, child: inner);
     }
     return Opacity(
       opacity: n.online ? 1 : 0.62,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        child: card,
+        child: inner,
       ),
     );
   }
@@ -351,7 +366,7 @@ class _RegionProbesState extends State<_RegionProbes> {
                               ? '--'
                               : '丢包 ${p.lossPct!.toStringAsFixed(1)}%',
                           textAlign: TextAlign.right,
-                          style: const TextStyle(
+                          style:  TextStyle(
                               fontSize: 11,
                               color:
                                   BocchiTheme.inkSoft),
@@ -422,14 +437,14 @@ class _RegionProbesState extends State<_RegionProbes> {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  const Text('选择省份',
+                   Text('选择省份',
                       style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
                           color: BocchiTheme.ink)),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close,
+                    icon:  Icon(Icons.close,
                         color: BocchiTheme.inkSoft),
                     onPressed: () =>
                         Navigator.of(ctx).pop(),
@@ -471,7 +486,7 @@ class _RegionProbesState extends State<_RegionProbes> {
                                     ? FontWeight.w800
                                     : FontWeight.w600,
                                 color: on
-                                    ? Colors.white
+                                    ? BocchiTheme.onAccent
                                     : BocchiTheme.ink)),
                       ),
                     );
@@ -516,12 +531,12 @@ class _RegionButton extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(region,
-                style: const TextStyle(
+                style:  TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                     color: BocchiTheme.pinkDeep)),
             const SizedBox(width: 4),
-            const Icon(Icons.arrow_drop_down,
+             Icon(Icons.arrow_drop_down,
                 size: 20, color: BocchiTheme.pinkDeep),
           ],
         ),

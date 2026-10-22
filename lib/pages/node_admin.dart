@@ -151,7 +151,7 @@ class NodeAdmin {
                     decoration: const InputDecoration(
                         labelText: '到期日期 YYYY-MM-DD')),
                 const SizedBox(height: 12),
-                const Text('SSH（终端用，留空则终端不显示）',
+                 Text('SSH（终端用，留空则终端不显示）',
                     style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: BocchiTheme.ink)),

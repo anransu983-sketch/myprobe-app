@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'models.dart';
+import 'theme.dart';
 
 /// 全局应用状态：服务端地址 + 登录态
 class AppState extends ChangeNotifier {
@@ -18,12 +19,26 @@ class AppState extends ChangeNotifier {
   /// 探测目标上次选的省份（全局一个，持久化；null = 从未选过，用默认）
   String? probeRegion;
 
+  /// 当前界面主题 id（持久化；默认 bocchi 波奇酱）
+  String themeId = AppThemeDef.bocchi.id;
+  AppThemeDef get themeDef => AppThemeDef.byId(themeId);
+
   Future<void> init() async {
     await client.load();
     final p = await SharedPreferences.getInstance();
     hideIp = p.getBool('mp_hide_ip') ?? false;
     probeRegion = p.getString('mp_probe_region');
+    themeId = p.getString('mp_theme_id') ?? AppThemeDef.bocchi.id;
+    BocchiTheme.current = themeDef;
     ready = true;
+    notifyListeners();
+  }
+
+  Future<void> setTheme(String id) async {
+    themeId = id;
+    BocchiTheme.current = themeDef;
+    final p = await SharedPreferences.getInstance();
+    await p.setString('mp_theme_id', id);
     notifyListeners();
   }
 

@@ -1,7 +1,7 @@
 name: myprobe_app
 description: MyProbe Android client - node monitor with admin management.
 publish_to: "none"
-version: 1.12.0+18
+version: 1.13.0+19
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -25,3 +25,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/wallpapers/nightcity_glass.jpg
+    - assets/wallpapers/nightcity_dusk.jpg

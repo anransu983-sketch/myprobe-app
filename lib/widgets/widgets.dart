@@ -63,6 +63,47 @@ class _BarsPainter extends CustomPainter {
       old.bars.length != bars.length;
 }
 
+/// 主题进度条：当前主题定义了 barGradient 时渲染渐变条，否则原样
+/// LinearProgressIndicator（波奇酱走原路径，视觉零变化）
+class ThemedProgressBar extends StatelessWidget {
+  final double pct; // 0..100
+  final double height;
+  final Color color;
+  const ThemedProgressBar(
+      {super.key, required this.pct, required this.height, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final v = (pct / 100).clamp(0.0, 1.0);
+    final grad = BocchiTheme.current.barGradient;
+    if (grad == null) {
+      return LinearProgressIndicator(
+        value: v,
+        minHeight: height,
+        backgroundColor: BocchiTheme.pinkLight,
+        valueColor: AlwaysStoppedAnimation(color),
+      );
+    }
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: BocchiTheme.pinkLight,
+        borderRadius: BorderRadius.circular(height / 2),
+      ),
+      child: FractionallySizedBox(
+        alignment: Alignment.centerLeft,
+        widthFactor: v,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: grad),
+            borderRadius: BorderRadius.circular(height / 2),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 百分比横条（CPU/内存/硬盘用）
 class MetricBar extends StatelessWidget {
   final String label;
@@ -88,16 +129,11 @@ class MetricBar extends StatelessWidget {
               width: 44,
               child: Text(label,
                   style:
-                      const TextStyle(fontSize: 12, color: BocchiTheme.inkSoft))),
+                       TextStyle(fontSize: 12, color: BocchiTheme.inkSoft))),
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: ((pct ?? 0) / 100).clamp(0.0, 1.0),
-                minHeight: 8,
-                backgroundColor: BocchiTheme.pinkLight,
-                valueColor: AlwaysStoppedAnimation(_c),
-              ),
+              child: ThemedProgressBar(pct: pct ?? 0, height: 8, color: _c),
             ),
           ),
           SizedBox(
@@ -105,7 +141,7 @@ class MetricBar extends StatelessWidget {
             child: Text(
               right ?? (pct == null ? '--' : '${pct!.toStringAsFixed(1)}%'),
               textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 12, color: BocchiTheme.ink),
+              style:  TextStyle(fontSize: 12, color: BocchiTheme.ink),
             ),
           ),
         ],
@@ -235,9 +271,9 @@ class GradientAppBar extends StatelessWidget
       centerTitle: true,
       actions: actions,
       flexibleSpace: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFFF06292), BocchiTheme.pinkDeep],
+            colors: [BocchiTheme.gradientStart, BocchiTheme.gradientEnd],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -274,12 +310,12 @@ class WebMetric extends StatelessWidget {
                 style: const TextStyle(fontSize: 14)),
             const SizedBox(width: 4),
             Text(label,
-                style: const TextStyle(
+                style:  TextStyle(
                     fontSize: 13,
                     color: BocchiTheme.inkSoft)),
             const Spacer(),
             Text(value,
-                style: const TextStyle(
+                style:  TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: BocchiTheme.ink)),
@@ -288,19 +324,14 @@ class WebMetric extends StatelessWidget {
         const SizedBox(height: 4),
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: v / 100,
-            minHeight: 7,
-            backgroundColor: BocchiTheme.pinkLight,
-            valueColor: const AlwaysStoppedAnimation(
-                BocchiTheme.pinkDeep),
-          ),
+          child: ThemedProgressBar(
+              pct: v, height: 7, color: BocchiTheme.pinkDeep),
         ),
         if (caption.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Text(caption,
-                style: const TextStyle(
+                style:  TextStyle(
                     fontSize: 11,
                     color: BocchiTheme.inkSoft)),
           ),
@@ -328,14 +359,14 @@ class WebStatBox extends StatelessWidget {
         children: [
           Text(line1,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style:  TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: BocchiTheme.pinkDeep,
                   height: 1.4)),
           const SizedBox(height: 2),
           Text(line2,
-              style: const TextStyle(
+              style:  TextStyle(
                   fontSize: 10,
                   color: BocchiTheme.inkSoft)),
         ],
@@ -361,7 +392,7 @@ class PinkPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(text,
-          style: const TextStyle(
+          style:  TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: BocchiTheme.pinkDeep)),

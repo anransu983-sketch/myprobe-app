@@ -81,7 +81,7 @@ class _SshCredsPageState extends State<SshCredsPage> {
           body: ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
-              const Padding(
+               Padding(
                 padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
                 child: Text(
                   '给每个节点填一次 SSH 地址和 root 密码，之后在终端点节点即可直接连接。密码加密保存在服务器，App 本地不保存。',
@@ -137,7 +137,7 @@ class _SshCredsPageState extends State<SshCredsPage> {
   Widget _row(ProbeNode n) {
     final hasHost = (n.sshHost ?? '').isNotEmpty;
     return ListTile(
-      leading: const Icon(Icons.terminal, color: BocchiTheme.pinkDeep),
+      leading:  Icon(Icons.terminal, color: BocchiTheme.pinkDeep),
       title: Text(n.name),
       subtitle: Text(
         hasHost
@@ -239,7 +239,7 @@ class _SshCredAddPageState extends State<SshCredAddPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('新节点信息',
+                   Text('新节点信息',
                       style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: BocchiTheme.ink)),
@@ -308,7 +308,7 @@ class _SshCredAddPageState extends State<SshCredAddPage> {
                       ),
                     ),
                   ),
-                  const Padding(
+                   Padding(
                     padding: EdgeInsets.only(top: 8),
                     child: Text(
                       '节点与凭据都存入服务器（密码 Fernet 加密），App 本地不保存。未填密码将显示「密码未保存」，可稍后在列表里点进该节点补填。',
@@ -354,7 +354,7 @@ class _SshCredAddPageState extends State<SshCredAddPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('✅ 已存入服务器',
+             Text('✅ 已存入服务器',
                 style: TextStyle(
                     fontWeight: FontWeight.w700, color: BocchiTheme.ink)),
             const SizedBox(height: 8),
@@ -363,14 +363,14 @@ class _SshCredAddPageState extends State<SshCredAddPage> {
                   ? '节点「$_createdId」已创建，SSH 密码未填（列表里显示「密码未保存」）。'
                   : '节点「$_createdId」已创建，SSH 凭据已保存。',
               style:
-                  const TextStyle(fontSize: 12, color: BocchiTheme.inkSoft),
+                   TextStyle(fontSize: 12, color: BocchiTheme.inkSoft),
             ),
             const SizedBox(height: 12),
-            const Text('探针安装命令',
+             Text('探针安装命令',
                 style: TextStyle(
                     fontWeight: FontWeight.w700, color: BocchiTheme.ink)),
             const SizedBox(height: 6),
-            const Text(
+             Text(
               '在新机上跑这条命令装探针，节点即上线；不装也能先在终端页用已存凭据直连。',
               style: TextStyle(fontSize: 12, color: BocchiTheme.inkSoft),
             ),
@@ -541,7 +541,7 @@ class _SshCredEditPageState extends State<SshCredEditPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('SSH 连接信息',
+                   Text('SSH 连接信息',
                       style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: BocchiTheme.ink)),
@@ -580,7 +580,7 @@ class _SshCredEditPageState extends State<SshCredEditPage> {
                       prefixIcon: const Icon(Icons.key),
                     ),
                   ),
-                  const Padding(
+                   Padding(
                     padding: EdgeInsets.only(top: 8),
                     child: Text(
                       '密码仅在保存时发送到服务器加密存储，本机不保存；留空表示不修改已存密码。',

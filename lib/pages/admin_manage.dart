@@ -195,7 +195,7 @@ class _ThemesPageState extends State<ThemesPage> {
                     onPressed:
                         _uploading ? null : _upload,
                   ),
-                  const Padding(
+                   Padding(
                     padding: EdgeInsets.only(top: 8),
                     child: Text(
                       'zip 内须包含 theme.json。内建 default 主题不可删，正在使用的主题请先切换。',
@@ -443,7 +443,7 @@ class _AlertRulesPageState extends State<AlertRulesPage> {
               onRefresh: _fetch,
               child: _rules!.isEmpty
                   ? ListView(
-                      children: const [
+                      children: [
                         SizedBox(height: 80),
                         Center(
                             child: Text('暂无规则，点右上角 ＋ 添加',
@@ -829,7 +829,7 @@ class _ChannelsPageState extends State<ChannelsPage> {
               onRefresh: _fetch,
               child: _chs!.isEmpty
                   ? ListView(
-                      children: const [
+                      children: [
                         SizedBox(height: 80),
                         Center(
                             child: Text('暂无渠道，点右上角 ＋ 添加',
@@ -883,7 +883,7 @@ class _ChannelsPageState extends State<ChannelsPage> {
                                       _toggle(c, v),
                                 ),
                                 IconButton(
-                                  icon: const Icon(
+                                  icon: Icon(
                                       Icons.edit,
                                       size: 20,
                                       color: BocchiTheme

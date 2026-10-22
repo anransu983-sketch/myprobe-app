@@ -234,12 +234,12 @@ class _TaskTile extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(t.name,
-                        style: const TextStyle(
+                        style:  TextStyle(
                             fontWeight: FontWeight.w700,
                             color: BocchiTheme.ink)),
                   ),
                   Text(t.type.toUpperCase(),
-                      style: const TextStyle(
+                      style:  TextStyle(
                           fontSize: 11,
                           color: BocchiTheme.inkSoft)),
                   if (_admin)
@@ -270,7 +270,7 @@ class _TaskTile extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(sub,
-                  style: const TextStyle(
+                  style:  TextStyle(
                       fontSize: 12,
                       color: BocchiTheme.inkSoft)),
               const SizedBox(height: 6),
