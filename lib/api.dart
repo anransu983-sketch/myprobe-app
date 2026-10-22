@@ -209,6 +209,19 @@ class MyProbeClient {
 
   // ---------- 管理：节点 ----------
 
+  /// 新建节点占位（v1.11.0，需服务端 v6.5+）：节点先存入服务器，
+  /// 之后 nodeMeta 补 SSH 凭据；agent 首次上报时自动补全主机信息。
+  Future<void> nodeCreate(String id, String name) async {
+    try {
+      await _sendJson('POST', '/api/admin/nodes', {'id': id, 'name': name});
+    } on ApiError {
+      rethrow;
+    } catch (_) {
+      // 老服务端没有这个接口（返回 HTML 404，JSON 解析失败落到这里）
+      throw ApiError('服务端版本太旧，请先把服务端升级到 v6.5 再新增 VPS');
+    }
+  }
+
   Future<void> nodeRename(String nid, String name) =>
       _sendJson('POST', '/api/admin/node/$nid/rename', {'name': name});
 
