@@ -138,7 +138,7 @@ class _ThemesPageState extends State<ThemesPage> {
                     const EdgeInsets.fromLTRB(14, 12, 14, 24),
                 children: [
                   for (final t in _themes!)
-                    Card(
+                    GlassCard(
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 6),
@@ -303,12 +303,13 @@ class _AlertRulesPageState extends State<AlertRulesPage> {
     String metric = 'cpu';
     showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.transparent,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius:
               BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => Padding(
+        builder: (ctx, setS) => GlassSheet(topRadius: 20, child: Padding(
           padding: EdgeInsets.only(
               left: 20,
               right: 20,
@@ -416,7 +417,7 @@ class _AlertRulesPageState extends State<AlertRulesPage> {
               ),
             ],
           ),
-        ),
+        )),
       ),
     );
   }
@@ -459,7 +460,7 @@ class _AlertRulesPageState extends State<AlertRulesPage> {
                       itemBuilder: (_, i) {
                         final r = _rules![i];
                         final en = (r['enabled'] as num?) != 0;
-                        return Card(
+                        return GlassCard(
                           child: ListTile(
                             title: Text('${r['name']}',
                                 style: const TextStyle(
@@ -632,6 +633,7 @@ class _ChannelsPageState extends State<ChannelsPage> {
 
     showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.transparent,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius:
@@ -683,7 +685,7 @@ class _ChannelsPageState extends State<ChannelsPage> {
             ];
           }
 
-          return Padding(
+          return GlassSheet(topRadius: 20, child: Padding(
             padding: EdgeInsets.only(
                 left: 20,
                 right: 20,
@@ -801,7 +803,7 @@ class _ChannelsPageState extends State<ChannelsPage> {
                 ],
               ),
             ),
-          );
+          ));
         },
       ),
     );
@@ -848,7 +850,7 @@ class _ChannelsPageState extends State<ChannelsPage> {
                             (c['enabled'] as num?) != 0;
                         final id =
                             (c['id'] as num).toInt();
-                        return Card(
+                        return GlassCard(
                           child: ListTile(
                             title: Text('${c['name']}',
                                 style: const TextStyle(

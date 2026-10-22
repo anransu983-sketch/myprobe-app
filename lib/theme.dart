@@ -83,7 +83,7 @@ class AppThemeDef {
   static const AppThemeDef bocchi = AppThemeDef(
     id: 'bocchi',
     name: '波奇酱',
-    desc: '粉色经典，默认主题',
+    desc: '粉色经典：波奇酱壁纸 + 粉白毛玻璃',
     accent: Color(0xFFEC407A),
     onAccent: Colors.white,
     accent2: Color(0xFFF48FB1),
@@ -93,11 +93,19 @@ class AppThemeDef {
     textSoft: Color(0xFF8A6D7A),
     gradientStart: Color(0xFFF06292),
     gradientEnd: Color(0xFFEC407A),
-    cardColor: Colors.white,
-    cardBorder: Color(0xFFFCE4EC),
-    sheetColor: Colors.white,
-    navBg: Colors.white,
-    inputFill: Colors.white,
+    // 全玻璃统一后：粉白半透明玻璃卡（原纯白不透明卡的玻璃化）
+    cardColor: Color(0xC7FFFFFF),
+    cardBorder: Color(0x99F8BBD0),
+    sheetColor: Color(0xE6FFFFFF),
+    navBg: Color(0xE6FFFFFF),
+    inputFill: Color(0xD9FFFFFF),
+    // 壁纸来自 Komari Bocchi 主题（MIT，jujiunofly/komari-theme-Bocchi）的
+    // boqi_white_phone（853×1844），与网页端 bocchi-starlight 同源
+    wallpaper: 'assets/wallpapers/bocchi.jpg',
+    glass: true,
+    bgBlur: 0,
+    cardBlur: 14,
+    scrim: Color(0x40FFF6F9),
   );
 
   static const AppThemeDef nightcityGlass = AppThemeDef(
@@ -120,7 +128,7 @@ class AppThemeDef {
     inputFill: Color(0xB3121E2A),
     wallpaper: 'assets/wallpapers/nightcity_glass.jpg',
     glass: true,
-    bgBlur: 2.5,
+    bgBlur: 0,
     cardBlur: 14,
     scrim: Color(0x33040A12),
     dark: true,
@@ -146,7 +154,7 @@ class AppThemeDef {
     inputFill: Color(0xE6FFFFFF),
     wallpaper: 'assets/wallpapers/nightcity_dusk.jpg',
     glass: true,
-    bgBlur: 2.5,
+    bgBlur: 0,
     cardBlur: 14,
     scrim: Color(0x14FFF0F6),
     barGradient: [Color(0xFF00C2FF), Color(0xFFFF2A6D)],
@@ -245,9 +253,32 @@ class BocchiTheme {
     );
   }
 
-  /// 按主题定义生成 ThemeData；波奇酱直接返回原 [light]。
+  /// 按主题定义生成 ThemeData。
+  /// 波奇酱以原 [light] 为底（配色逐值不变），仅叠加玻璃化必需的覆盖：
+  /// Scaffold 透明（透出壁纸）、卡/sheet/弹窗/导航/输入框底色换半透明玻璃色。
   static ThemeData themeDataFor(AppThemeDef def) {
-    if (def.id == AppThemeDef.bocchi.id) return light;
+    if (def.id == AppThemeDef.bocchi.id) {
+      final base = light;
+      return base.copyWith(
+        scaffoldBackgroundColor: Colors.transparent,
+        cardTheme: base.cardTheme.copyWith(
+          color: def.cardColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: def.cardBorder, width: 1),
+          ),
+        ),
+        bottomNavigationBarTheme:
+            base.bottomNavigationBarTheme.copyWith(backgroundColor: def.navBg),
+        bottomSheetTheme: BottomSheetThemeData(
+          backgroundColor: def.sheetColor,
+          modalBackgroundColor: def.sheetColor,
+        ),
+        dialogTheme: DialogThemeData(backgroundColor: def.sheetColor),
+        inputDecorationTheme:
+            base.inputDecorationTheme.copyWith(fillColor: def.inputFill),
+      );
+    }
     final scheme = ColorScheme(
       brightness: def.dark ? Brightness.dark : Brightness.light,
       primary: def.accent,
@@ -321,8 +352,10 @@ class BocchiTheme {
   }
 }
 
-/// 全 App 背景层：玻璃主题时铺壁纸 + 轻模糊 + 罩色，Scaffold 透明透出；
-/// 波奇酱时原样返回 child，零变化。
+/// 全 App 背景层：铺当前主题壁纸 + 罩色，Scaffold 透明透出。
+/// 三款主题都有壁纸、壁纸保持清晰（bgBlur 均为 0，真毛玻璃靠各卡片自己的
+/// BackdropFilter，卡外壁纸不糊——这正是全玻璃要的效果）；
+/// 罩色负责文字直压壁纸处的可读性（毛玻璃版压暗、黄昏提亮、波奇酱粉白轻罩）。
 class AppBackground extends StatelessWidget {
   final Widget child;
   const AppBackground({super.key, required this.child});
@@ -330,17 +363,20 @@ class AppBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final def = BocchiTheme.current;
-    if (!def.glass || def.wallpaper == null) return child;
+    if (def.wallpaper == null) return child;
     return Stack(
       fit: StackFit.expand,
       children: [
         Image.asset(def.wallpaper!, fit: BoxFit.cover),
-        Positioned.fill(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: def.bgBlur, sigmaY: def.bgBlur),
-            child: Container(color: def.scrim),
-          ),
-        ),
+        if (def.bgBlur > 0)
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: def.bgBlur, sigmaY: def.bgBlur),
+              child: Container(color: def.scrim),
+            ),
+          )
+        else
+          Positioned.fill(child: Container(color: def.scrim)),
         child,
       ],
     );

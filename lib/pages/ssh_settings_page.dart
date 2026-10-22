@@ -89,7 +89,7 @@ class _SshCredsPageState extends State<SshCredsPage> {
                 ),
               ),
               if (!admin)
-                const Card(
+                const GlassCard(
                   child: Padding(
                     padding: EdgeInsets.all(14),
                     child: Text('请先在设置页登录管理员，再编辑 SSH 凭据。',
@@ -97,7 +97,7 @@ class _SshCredsPageState extends State<SshCredsPage> {
                   ),
                 )
               else if (_err != null)
-                Card(
+                GlassCard(
                   child: Padding(
                     padding: const EdgeInsets.all(14),
                     child: Text('加载节点失败：$_err',
@@ -110,14 +110,14 @@ class _SshCredsPageState extends State<SshCredsPage> {
                   child: Center(child: CircularProgressIndicator()),
                 )
               else if (_nodes!.isEmpty)
-                const Card(
+                const GlassCard(
                   child: Padding(
                     padding: EdgeInsets.all(14),
                     child: Text('暂无节点'),
                   ),
                 )
               else
-                Card(
+                GlassCard(
                   child: Column(
                     children: [
                       for (var i = 0; i < _nodes!.length; i++) ...[
@@ -233,7 +233,7 @@ class _SshCredAddPageState extends State<SshCredAddPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
-          Card(
+          GlassCard(
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
@@ -348,7 +348,7 @@ class _SshCredAddPageState extends State<SshCredAddPage> {
   }
 
   Widget _installCard() {
-    return Card(
+    return GlassCard(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -535,7 +535,7 @@ class _SshCredEditPageState extends State<SshCredEditPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
-          Card(
+          GlassCard(
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(

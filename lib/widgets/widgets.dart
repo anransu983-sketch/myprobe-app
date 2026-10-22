@@ -1,6 +1,66 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
+
+/// 全 App 统一卡片（全玻璃）：参数与原 Card 的常用子集对齐（margin/child），
+/// 内部按当前主题定义渲染真逐卡毛玻璃——ClipRRect 圆角裁切 + BackdropFilter
+/// （sigma = 主题 cardBlur，现三款均为 14）+ 半透明卡色 + 半透明边。
+/// 三款主题（波奇酱/夜之城·毛玻璃/夜之城·黄昏）走同一条路径，参数全从
+/// AppThemeDef 取；换主题即换玻璃参数，页面代码不用动。
+class GlassCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry? margin;
+  final double radius;
+  const GlassCard(
+      {super.key, required this.child, this.margin, this.radius = 16});
+
+  @override
+  Widget build(BuildContext context) {
+    final def = BocchiTheme.current;
+    // 与 CardTheme 默认 margin 一致（原 Card 无显式 margin 时的取值）
+    final m =
+        margin ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 8);
+    return Padding(
+      padding: m,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: def.cardBlur, sigmaY: def.cardBlur),
+          child: Container(
+            decoration: BoxDecoration(
+              color: def.cardColor,
+              borderRadius: BorderRadius.circular(radius),
+              border: Border.all(color: def.cardBorder, width: 1),
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 底部弹窗的玻璃容器：与 [GlassCard] 同一套参数，专给 showModalBottomSheet 的
+/// 内容套壳（调用处需把 sheet 的 backgroundColor 设为透明，BackdropFilter
+/// 才能采样到弹窗背后的页面/壁纸）。
+class GlassSheet extends StatelessWidget {
+  final Widget child;
+  final double topRadius;
+  const GlassSheet({super.key, required this.child, this.topRadius = 24});
+
+  @override
+  Widget build(BuildContext context) {
+    final def = BocchiTheme.current;
+    return ClipRRect(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: def.cardBlur, sigmaY: def.cardBlur),
+        child: Container(color: def.sheetColor, child: child),
+      ),
+    );
+  }
+}
 
 /// 拨测 30 条历史小柱状图
 class MiniBars extends StatelessWidget {

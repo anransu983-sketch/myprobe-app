@@ -9,8 +9,14 @@ void showErr(BuildContext context, Object e) {
       : e is NeedLogin
           ? '需要管理员登录'
           : '$e';
+  // 夜之城·毛玻璃的底色是 2077 黄（pinkDeep=accent），白字对比太弱，用深字
+  final darkText = BocchiTheme.current.id == 'nightcity_glass';
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(msg), backgroundColor: BocchiTheme.pinkDeep),
+    SnackBar(
+      content: Text(msg,
+          style: darkText ? const TextStyle(color: Color(0xFF111111)) : null),
+      backgroundColor: BocchiTheme.pinkDeep,
+    ),
   );
 }
 

@@ -147,7 +147,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
   }
 
   Widget _rangeCard() {
-    return Card(
+    return GlassCard(
       child: Padding(
         padding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -211,7 +211,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       }
       spots.add(pts);
     }
-    return Card(
+    return GlassCard(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -343,7 +343,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       );
     }
 
-    return Card(
+    return GlassCard(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(

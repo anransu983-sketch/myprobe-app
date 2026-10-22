@@ -3,6 +3,7 @@ import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../ui.dart';
+import '../widgets/widgets.dart';
 
 /// 节点管理操作（重命名 / 计费信息 / 删除），节点卡片与详情页共用
 class NodeAdmin {
@@ -11,11 +12,14 @@ class NodeAdmin {
       {bool popAfterDelete = false}) {
     showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
           borderRadius:
               BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => SafeArea(
-        child: Column(
+      builder: (_) => GlassSheet(
+        topRadius: 20,
+        child: SafeArea(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
@@ -45,6 +49,7 @@ class NodeAdmin {
                 }),
             const SizedBox(height: 8),
           ],
+        ),
         ),
       ),
     );

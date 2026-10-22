@@ -1,4 +1,3 @@
-import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../state.dart';
 import '../models.dart';
@@ -62,7 +61,7 @@ class PhoneNodeCard extends StatelessWidget {
     final rv = remainValue(n);
     final osIcon =
         n.os.toLowerCase().contains('linux') ? '🐧' : '🖥️';
-    final card = Card(
+    final card = GlassCard(
       margin: const EdgeInsets.symmetric(
           horizontal: 10, vertical: 6),
       child: Padding(
@@ -229,20 +228,9 @@ class PhoneNodeCard extends StatelessWidget {
         ),
       ),
     );
-    // 玻璃主题：卡片套一层 BackdropFilter 才是真毛玻璃；
-    // 波奇酱时 inner 就是原 card，零变化。
-    Widget inner = card;
-    if (BocchiTheme.current.glass) {
-      inner = ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-              sigmaX: BocchiTheme.current.cardBlur,
-              sigmaY: BocchiTheme.current.cardBlur),
-          child: card,
-        ),
-      );
-    }
+    // 全玻璃统一：GlassCard 内部就是逐卡 BackdropFilter 真毛玻璃
+    // （三款主题同一套机制，参数从 AppThemeDef 取）。
+    final Widget inner = card;
     if (onTap == null) {
       return Opacity(
           opacity: n.online ? 1 : 0.62, child: inner);
@@ -415,12 +403,15 @@ class _RegionProbesState extends State<_RegionProbes> {
       BuildContext context, List<String> regions) async {
     final sel = await showModalBottomSheet<String>(
       context: context,
+      // 透明底：让 GlassSheet 的 BackdropFilter 采样到弹窗背后的页面/壁纸
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius:
             BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
+      builder: (ctx) => GlassSheet(
+        child: SafeArea(
+          child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -494,6 +485,7 @@ class _RegionProbesState extends State<_RegionProbes> {
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),

@@ -211,7 +211,7 @@ class _TaskTile extends StatelessWidget {
             : '不可达 · ${t.target}';
     return Opacity(
       opacity: t.enabled ? 1 : 0.55,
-      child: Card(
+      child: GlassCard(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
           child: Column(

@@ -35,7 +35,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 界面主题选择卡：三款主题（波奇酱 / 夜之城·毛玻璃 / 夜之城·黄昏）
   Widget _themeCard() {
     final cur = AppState.instance.themeId;
-    return Card(
+    return GlassCard(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -90,7 +90,7 @@ class _SettingsPageState extends State<SettingsPage> {
           body: ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
-              Card(
+              GlassCard(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Column(
@@ -132,7 +132,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               _themeCard(),
-              Card(
+              GlassCard(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Column(
@@ -262,7 +262,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               if (c.admin)
-                Card(
+                GlassCard(
                   child: Padding(
                     padding: const EdgeInsets.all(14),
                     child: Column(
@@ -283,7 +283,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                 ),
-              Card(
+              GlassCard(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Column(
@@ -549,7 +549,7 @@ class _NodeOrderPageState extends State<NodeOrderPage> {
               },
               itemBuilder: (_, i) {
                 final nd = _nodes[i];
-                return Card(
+                return GlassCard(
                   key: ValueKey(nd.id),
                   child: ListTile(
                     leading: Text('${i + 1}',
@@ -622,7 +622,7 @@ class _ServerAddressPageState extends State<ServerAddressPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
-          Card(
+          GlassCard(
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
