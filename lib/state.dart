@@ -15,11 +15,22 @@ class AppState extends ChangeNotifier {
   /// 是否遮挡 IP（截图分享用）
   bool hideIp = false;
 
+  /// 探测目标上次选的省份（全局一个，持久化；null = 从未选过，用默认）
+  String? probeRegion;
+
   Future<void> init() async {
     await client.load();
     final p = await SharedPreferences.getInstance();
     hideIp = p.getBool('mp_hide_ip') ?? false;
+    probeRegion = p.getString('mp_probe_region');
     ready = true;
+    notifyListeners();
+  }
+
+  Future<void> setProbeRegion(String region) async {
+    probeRegion = region;
+    final p = await SharedPreferences.getInstance();
+    await p.setString('mp_probe_region', region);
     notifyListeners();
   }
 

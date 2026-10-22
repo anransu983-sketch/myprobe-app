@@ -290,8 +290,13 @@ class _RegionProbesState extends State<_RegionProbes> {
     if (groups.isEmpty) return const SizedBox.shrink();
     final regions = groups.keys.toList();
     if (_region == null || !regions.contains(_region)) {
-      _region =
-          regions.contains('浙江') ? '浙江' : regions.first;
+      // 优先上次选的省份（AppState 持久化），从未选过才默认浙江
+      final saved = AppState.instance.probeRegion;
+      _region = (saved != null && regions.contains(saved))
+          ? saved
+          : regions.contains('浙江')
+              ? '浙江'
+              : regions.first;
     }
     final ps = groups[_region] ?? [];
     final slim = widget.style == ProbesStyle.slim;
@@ -480,6 +485,8 @@ class _RegionProbesState extends State<_RegionProbes> {
     );
     if (sel != null && sel != _region && mounted) {
       setState(() => _region = sel);
+      // 记住选择：重启/重进页面后恢复，不再跳回默认浙江
+      await AppState.instance.setProbeRegion(sel);
     }
   }
 }

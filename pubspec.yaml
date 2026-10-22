@@ -1,7 +1,7 @@
 name: myprobe_app
 description: MyProbe Android client - node monitor with admin management.
 publish_to: "none"
-version: 1.11.0+17
+version: 1.12.0+18
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
