@@ -214,12 +214,15 @@ class PhoneNodeCard extends StatelessWidget {
                         line2: '本月流量')),
                 const SizedBox(width: 8),
                 Expanded(
+                    // 余期只在卡头 PinkPill 报一处，这里只报余值，避免同屏重复
                     child: WebStatBox(
                         line1: n.daysLeft != null
-                            ? '余期${n.daysLeft}天\n${rv != null ? '余值$cur${rv.toStringAsFixed(2)}' : ''}'
+                            ? (rv != null
+                                ? '余值$cur${rv.toStringAsFixed(2)}'
+                                : '余值 --')
                             : '${n.online ? '在线' : '离线'}\n${AppState.instance.showIp(n.ip)}',
                         line2: n.daysLeft != null
-                            ? '余期 / 余值'
+                            ? '余值'
                             : '状态 / IP')),
               ],
             ),

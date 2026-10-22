@@ -147,7 +147,8 @@ class AppThemeDef {
     textSoft: Color(0xFF86627A),
     gradientStart: Color(0xFF7E3FA3),
     gradientEnd: Color(0xFFFF2A6D),
-    cardColor: Color(0xD9FFF7FB),
+    // v1.13.1：卡色 α 0xD9(0.85) → 0xC7(0.78) 降一档，让黄昏壁纸多透一点
+    cardColor: Color(0xC7FFF7FB),
     cardBorder: Color(0x80FFFFFF),
     sheetColor: Color(0xF7FFF7FB),
     navBg: Color(0xEFFFF7FB),

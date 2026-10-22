@@ -31,6 +31,16 @@ class _RecentConn {
       );
 }
 
+/// 合并主机列表的一行：node 非空 = 探针节点行（recent 只是命中的最近记录，
+/// 借它显示时间）；node 为空 = 仅最近连过的临时主机行（recent 本体）
+class _HostRow {
+  final ProbeNode? node;
+  final _RecentConn? recent;
+  const _HostRow.node(this.node, this.recent);
+  const _HostRow.temp(this.recent) : node = null;
+  int get ts => recent?.ts ?? -1;
+}
+
 String _ago(int ts) {
   final d = DateTime.now().millisecondsSinceEpoch ~/ 1000 - ts;
   if (d < 60) return '刚刚';
@@ -40,7 +50,7 @@ String _ago(int ts) {
 }
 
 /// 底部第 3 个 Tab：SSH 终端（走服务端内置 Web SSH，需管理员）
-/// JuiceSSH 风格：快速连接 / 常用连接 / 探针节点 / 代码片段
+/// JuiceSSH 风格：快速连接 / 主机（探针节点与常用连接合并） / 代码片段
 class TerminalTab extends StatefulWidget {
   const TerminalTab({super.key});
   @override
@@ -205,8 +215,7 @@ class _TerminalTabState extends State<TerminalTab> {
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
               children: [
                 _quickCard(),
-                if (_recents.isNotEmpty) _recentCard(),
-                _nodesCard(nodes),
+                _hostsCard(nodes),
                 _snippetCard(),
               ],
             ),
@@ -330,88 +339,153 @@ class _TerminalTabState extends State<TerminalTab> {
     _qPw.clear();
   }
 
-  /// ⭐ 常用连接
-  Widget _recentCard() {
+  /// 常用记录与节点是不是同一台机器（与 _addRecent 的去重键一致：host+port+user）
+  bool _sameHost(_RecentConn r, ProbeNode n) =>
+      r.host == (n.sshHost ?? '') &&
+      r.port == (n.sshPort ?? 22) &&
+      r.user == (n.sshUser ?? 'root');
+
+  /// 🖥️ 主机：探针节点（已存凭据）与常用连接（最近连过）合并成一个列表。
+  /// 原先两个列表装着同一批机器、同台出现两次。现在一台一行：
+  /// 命中节点的最近记录只借它的时间（显示「最近 xx 前」小字），行本身
+  /// 仍走节点直连；没进节点的临时主机单独成行，点一下输密码连，保留 × 删历史。
+  /// 排序：有最近记录的行（节点行+临时行）按最近时间倒序置顶，
+  /// 其余节点按节点原序随后。
+  Widget _hostsCard(List<ProbeNode> nodes) {
+    final matched = <ProbeNode, _RecentConn>{};
+    final temps = <_RecentConn>[];
+    for (final r in _recents) {
+      ProbeNode? hit;
+      for (final n in nodes) {
+        if (_sameHost(r, n)) {
+          hit = n;
+          break;
+        }
+      }
+      if (hit != null) {
+        final old = matched[hit];
+        if (old == null || r.ts > old.ts) matched[hit] = r;
+      } else {
+        temps.add(r);
+      }
+    }
+    final rows = <_HostRow>[
+      ...[
+        for (final n in nodes)
+          if (matched.containsKey(n)) _HostRow.node(n, matched[n]),
+        for (final r in temps) _HostRow.temp(r),
+      ]..sort((a, b) => b.ts.compareTo(a.ts)),
+      for (final n in nodes)
+        if (!matched.containsKey(n)) _HostRow.node(n, null),
+    ];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _cardHead('⭐', '常用连接', '最近连过的，点一下输密码直连'),
+            _cardHead('🖥️', '主机', '已存凭据的节点点按直连；仅最近连过的点一下输密码连'),
             const SizedBox(height: 4),
-            for (final r in _recents)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                leading: const OnlineDot(online: true),
-                title: Text(r.name,
-                    style:
-                        const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(
-                  '${r.user}@${AppState.instance.showIp(r.host)}:${r.port}',
-                  style: const TextStyle(fontFamily: 'monospace'),
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(_ago(r.ts),
-                        style:  TextStyle(
-                            fontSize: 11,
-                            color: BocchiTheme.inkSoft)),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      color: BocchiTheme.inkSoft,
-                      onPressed: () => _removeRecent(r),
-                    ),
-                  ],
-                ),
-                onTap: () => _openCustomConnect(r),
-              ),
+            if (rows.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text('没有配置 SSH 的节点\n请先在网页管理页给节点配好 SSH',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: BocchiTheme.inkSoft)),
+              )
+            else
+              for (final row in rows) _hostTile(row),
           ],
         ),
       ),
     );
   }
 
-  /// 🖥️ 探针节点
-  Widget _nodesCard(List<ProbeNode> nodes) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _hostTile(_HostRow row) {
+    final n = row.node;
+    if (n != null) {
+      // 节点行：已存凭据，点按走 _openConnect（可留空用服务端已存密码）
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        leading: OnlineDot(online: n.online),
+        title: Row(
           children: [
-            _cardHead('🖥️', '探针节点', '已录入 SSH 的节点'),
-            const SizedBox(height: 4),
-            if (nodes.isEmpty)
-               Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('没有配置 SSH 的节点\n请先在网页管理页给节点配好 SSH',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: BocchiTheme.inkSoft)),
-              )
-            else
-              for (final n in nodes)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  leading: OnlineDot(online: n.online),
-                  title: Text(n.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold)),
-                  subtitle: Text(
-                    '${n.sshUser ?? 'root'}@${AppState.instance.showIp(n.sshHost ?? '')}:${n.sshPort ?? 22}',
-                    style:
-                        const TextStyle(fontFamily: 'monospace'),
-                  ),
-                  trailing:  Icon(Icons.chevron_right,
-                      color: BocchiTheme.pinkDeep),
-                  onTap: () => _openConnect(n),
-                ),
+            Flexible(
+              child: Text(n.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 8),
+            _connTag('可直连', true),
           ],
         ),
+        subtitle: Text(
+          '${n.sshUser ?? 'root'}@${AppState.instance.showIp(n.sshHost ?? '')}:${n.sshPort ?? 22}',
+          style: const TextStyle(fontFamily: 'monospace'),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (row.recent != null)
+              Text(_ago(row.recent!.ts),
+                  style: TextStyle(
+                      fontSize: 11, color: BocchiTheme.inkSoft)),
+            Icon(Icons.chevron_right, color: BocchiTheme.pinkDeep),
+          ],
+        ),
+        onTap: () => _openConnect(n),
+      );
+    }
+    // 临时主机行：仅最近连过，点一下输密码连，× 删历史（原常用连接行为）
+    final r = row.recent!;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      leading: const OnlineDot(online: true),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(r.name,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(width: 8),
+          _connTag('输密码连', false),
+        ],
       ),
+      subtitle: Text(
+        '${r.user}@${AppState.instance.showIp(r.host)}:${r.port}',
+        style: const TextStyle(fontFamily: 'monospace'),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(_ago(r.ts),
+              style: TextStyle(fontSize: 11, color: BocchiTheme.inkSoft)),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            color: BocchiTheme.inkSoft,
+            onPressed: () => _removeRecent(r),
+          ),
+        ],
+      ),
+      onTap: () => _openCustomConnect(r),
+    );
+  }
+
+  /// 行内小标签：一眼区分这行点下去是直连还是要输密码
+  Widget _connTag(String text, bool direct) {
+    final c = direct ? BocchiTheme.okGreen : BocchiTheme.inkSoft;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 10, color: c, fontWeight: FontWeight.w600)),
     );
   }
 

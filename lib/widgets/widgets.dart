@@ -323,6 +323,7 @@ class GradientAppBar extends StatelessWidget
 
   @override
   Widget build(BuildContext context) {
+    final def = BocchiTheme.current;
     return AppBar(
       leading: leading,
       title: Text(title,
@@ -330,14 +331,50 @@ class GradientAppBar extends StatelessWidget
               fontWeight: FontWeight.bold, fontSize: fontSize)),
       centerTitle: true,
       actions: actions,
-      flexibleSpace: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [BocchiTheme.gradientStart, BocchiTheme.gradientEnd],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      // 玻璃顶栏（v1.13.1 全页拉齐）：AppBar 本体透明，flexibleSpace 用
+      // BackdropFilter 采样其下的壁纸层，再盖 α0.80 的主题渐变——三款主题
+      // 都是「半透明渐变 + 模糊」的玻璃条，不再是实心色块跟壁纸串味。
+      // 原先各页不一致（有的走渐变、有的吃 AppBarTheme 实心粉）也由此统一：
+      // 所有页都用这个组件，材质只由当前主题定义决定。
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      flexibleSpace: ClipRect(
+        child: BackdropFilter(
+          filter:
+              ImageFilter.blur(sigmaX: def.cardBlur, sigmaY: def.cardBlur),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  def.gradientStart.withValues(alpha: 0.80),
+                  def.gradientEnd.withValues(alpha: 0.80),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 底部导航的玻璃壳：与 [GlassCard] 同一套参数——ClipRect + BackdropFilter
+/// （sigma = 主题 cardBlur）采样条子底下的壁纸，导航本体继续用主题 navBg
+/// 半透明底色，拼成跟主题走的毛玻璃底栏（三款主题一致），不再实心切断壁纸。
+class GlassBottomBar extends StatelessWidget {
+  final Widget child;
+  const GlassBottomBar({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final def = BocchiTheme.current;
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: def.cardBlur, sigmaY: def.cardBlur),
+        child: child,
       ),
     );
   }

@@ -131,6 +131,9 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           PhoneNodeCard(node: n, onChanged: _fetch),
+          // 图表范围选择器紧贴图表上方（原在页底、流量卡之下，控制关系反了）；
+          // 流量卡自带的今日/本周开关在流量卡内，两者作用域从此分开
+          _rangeCard(),
           _chartCard('CPU / 内存 (%)', [
             _Series('CPU', _hist?.cpu, BocchiTheme.pinkDeep),
             _Series('内存', _hist?.mem, const Color(0xFF7B61FF)),
@@ -138,9 +141,9 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
           _chartCard('实时网速', [
             _Series('下行', _hist?.rx.map((e) => e == null ? null : e / 1024).toList(), BocchiTheme.okGreen),
             _Series('上行', _hist?.tx.map((e) => e == null ? null : e / 1024).toList(), BocchiTheme.pinkDeep),
-          ], (v) => v >= 1024 ? '${(v / 1024).toStringAsFixed(1)}M' : '${v.toStringAsFixed(0)}K'),
+          ], (v) => v >= 1024 ? '${(v / 1024).toStringAsFixed(1)}M' : '${v.toStringAsFixed(0)}K',
+              softCap: true),
           if (_daily.isNotEmpty) _trafficCard(),
-          _rangeCard(),
         ],
       ),
     );
@@ -153,7 +156,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
           children: [
-             Text('时间范围',
+             Text('图表范围',
                 style: TextStyle(
                     color: BocchiTheme.inkSoft,
                     fontSize: 13)),
@@ -195,8 +198,28 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
   }
 
   Widget _chartCard(String title, List<_Series> series,
-      String Function(double) fmtY) {
+      String Function(double) fmtY,
+      {bool softCap = false}) {
     final h = _hist;
+    // 量程软化（仅网速图 softCap）：单个尖峰会把自动量程顶爆、其余曲线压成
+    // 直线。改为：全部数据点的 95 分位 ×1.25 当 maxY，尖峰照真实高度画、
+    // 超出部分被图顶截断（clipData）；数据点一个不改，触摸提示仍是真实值。
+    // 尖峰不够突出（最大值 ≤ 95 分位 ×2）时不干预，沿用自动量程。
+    double? softMaxY;
+    if (softCap) {
+      final all = <double>[];
+      for (final s in series) {
+        for (final v in s.values ?? const <double?>[]) {
+          if (v != null) all.add(v);
+        }
+      }
+      if (all.isNotEmpty) {
+        all.sort();
+        final maxV = all.last;
+        final p95 = all[((all.length - 1) * 0.95).floor()];
+        if (p95 > 0 && maxV > p95 * 2) softMaxY = p95 * 1.25;
+      }
+    }
     final spots = <List<FlSpot>>[];
     var hasData = false;
     for (final s in series) {
@@ -255,6 +278,9 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                               TextStyle(color: BocchiTheme.inkSoft)))
                   : LineChart(
                       LineChartData(
+                        minY: softCap ? 0 : null,
+                        maxY: softMaxY,
+                        clipData: const FlClipData.all(),
                         titlesData: const FlTitlesData(show: false),
                         gridData: const FlGridData(show: true),
                         borderData: FlBorderData(show: false),

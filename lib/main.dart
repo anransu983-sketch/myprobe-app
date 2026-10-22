@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'theme.dart';
 import 'state.dart';
+import 'widgets/widgets.dart';
 import 'pages/nodes_page.dart';
 import 'pages/probes_page.dart';
 import 'pages/terminal_page.dart';
@@ -79,7 +80,9 @@ class _HomePageState extends State<HomePage> {
         ];
         return Scaffold(
           body: IndexedStack(index: app.tabIndex, children: pages),
-          bottomNavigationBar: BottomNavigationBar(
+          bottomNavigationBar: GlassBottomBar(
+            child: BottomNavigationBar(
+            backgroundColor: BocchiTheme.current.navBg,
             currentIndex: app.tabIndex,
             onTap: (i) => app.goTab(i),
             type: BottomNavigationBarType.fixed,
@@ -104,6 +107,7 @@ class _HomePageState extends State<HomePage> {
                 label: '设置',
               ),
             ],
+            ),
           ),
         );
       },

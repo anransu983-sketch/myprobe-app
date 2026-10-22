@@ -204,16 +204,21 @@ class _TaskTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = task;
+    // 状态行：目标常驻（一行里认得出是哪台），有结果时后面接延迟/丢包
     final sub = t.ok == null
         ? t.target
         : t.ok == true
-            ? '${t.latency?.toStringAsFixed(1) ?? '--'}ms · 丢包 ${t.loss?.toStringAsFixed(0) ?? '--'}%'
+            ? '${t.target} · ${t.latency?.toStringAsFixed(1) ?? '--'}ms · 丢包 ${t.loss?.toStringAsFixed(0) ?? '--'}%'
             : '不可达 · ${t.target}';
     return Opacity(
       opacity: t.enabled ? 1 : 0.55,
       child: GlassCard(
+        // 紧凑行：上下 margin 减半，卡内只剩一行标题区 + 可选的历史条
+        // （原版每卡 padding 10 + 30 高延迟条 + GlassCard 默认 margin，
+        //  93 条平铺时一屏看不到几条）
+        margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -233,52 +238,63 @@ class _TaskTile extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(t.name,
-                        style:  TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: BocchiTheme.ink)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(t.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: BocchiTheme.ink)),
+                        Text(sub,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 11.5,
+                                color: BocchiTheme.inkSoft)),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 6),
                   Text(t.type.toUpperCase(),
-                      style:  TextStyle(
-                          fontSize: 11,
-                          color: BocchiTheme.inkSoft)),
+                      style: TextStyle(
+                          fontSize: 11, color: BocchiTheme.inkSoft)),
                   if (_admin)
                     PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
                       icon: const Icon(Icons.more_vert, size: 20),
-                      onSelected: (v) =>
-                          _menu(context, v),
+                      onSelected: (v) => _menu(context, v),
                       itemBuilder: (_) => [
-                        PopupMenuItem(
-                            value: 'edit',
-                            child: const Text('编辑')),
+                        const PopupMenuItem(
+                            value: 'edit', child: Text('编辑')),
                         PopupMenuItem(
                             value: 'toggle',
-                            child: Text(
-                                t.enabled ? '停用' : '启用')),
+                            child: Text(t.enabled ? '停用' : '启用')),
                         const PopupMenuItem(
-                            value: 'test',
-                            child: Text('立即测试')),
+                            value: 'test', child: Text('立即测试')),
                         const PopupMenuItem(
                             value: 'del',
                             child: Text('删除',
-                                style: TextStyle(
-                                    color:
-                                        BocchiTheme.warnRed))),
+                                style: TextStyle(color: BocchiTheme.warnRed))),
                       ],
                     ),
                 ],
               ),
-              const SizedBox(height: 2),
-              Text(sub,
-                  style:  TextStyle(
-                      fontSize: 12,
-                      color: BocchiTheme.inkSoft)),
-              const SizedBox(height: 6),
-              PinkBars(
-                latencies:
-                    t.bars.map((b) => b.latency).toList(),
-                oks: t.bars.map((b) => b.ok).toList(),
-              ),
+              // 历史延迟条是结果展示区，删不得：有历史时才展开（瘦身到 14 高），
+              // 从没跑出结果的任务不占这块地方，整行就此紧凑
+              if (t.bars.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: PinkBars(
+                    latencies: t.bars.map((b) => b.latency).toList(),
+                    oks: t.bars.map((b) => b.ok).toList(),
+                    height: 14,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

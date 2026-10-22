@@ -32,51 +32,35 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  /// 界面主题选择卡：三款主题（波奇酱 / 夜之城·毛玻璃 / 夜之城·黄昏）
-  Widget _themeCard() {
+  /// 界面主题三选一条目（波奇酱 / 夜之城·毛玻璃 / 夜之城·黄昏），放「外观」卡内
+  List<Widget> _themeTiles() {
     final cur = AppState.instance.themeId;
-    return GlassCard(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-             Text('界面主题',
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: BocchiTheme.ink)),
-            const SizedBox(height: 4),
-            for (final t in AppThemeDef.all)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: t.wallpaper == null
-                    ? Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: t.accent,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      )
-                    : ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.asset(t.wallpaper!,
-                            width: 40, height: 40, fit: BoxFit.cover),
-                      ),
-                title: Text(t.name),
-                subtitle: Text(t.desc,
-                    style: const TextStyle(fontSize: 12)),
-                trailing: cur == t.id
-                    ? Icon(Icons.check_circle,
-                        color: BocchiTheme.pinkDeep)
-                    :  Icon(Icons.circle_outlined,
-                        color: BocchiTheme.inkSoft),
-                onTap: () => AppState.instance.setTheme(t.id),
-              ),
-          ],
+    return [
+      for (final t in AppThemeDef.all)
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: t.wallpaper == null
+              ? Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: t.accent,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                )
+              : ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset(t.wallpaper!,
+                      width: 40, height: 40, fit: BoxFit.cover),
+                ),
+          title: Text(t.name),
+          subtitle: Text(t.desc, style: const TextStyle(fontSize: 12)),
+          trailing: cur == t.id
+              ? Icon(Icons.check_circle, color: BocchiTheme.pinkDeep)
+              : Icon(Icons.circle_outlined, color: BocchiTheme.inkSoft),
+          onTap: () => AppState.instance.setTheme(t.id),
         ),
-      ),
-    );
+    ];
   }
 
   @override
@@ -85,53 +69,97 @@ class _SettingsPageState extends State<SettingsPage> {
       animation: AppState.instance,
       builder: (_, __) {
         final c = AppState.instance.client;
+        final app = AppState.instance;
         return Scaffold(
           appBar: const GradientAppBar(title: '🎸 设置'),
           body: ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
+              // ── 1. 连接：服务器地址 / SSH 凭据 ──────────────
               GlassCard(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                       Text('探针服务器',
+                      Text('连接',
                           style: TextStyle(
                               fontWeight: FontWeight.w700,
                               color: BocchiTheme.ink)),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading:  Icon(Icons.link,
-                            color: BocchiTheme.pinkDeep),
+                        leading:
+                            Icon(Icons.link, color: BocchiTheme.pinkDeep),
                         title: const Text('服务器地址'),
-                        trailing: const Icon(
-                            Icons.chevron_right),
-                        onTap: () => Navigator.of(context)
-                            .push(MaterialPageRoute(
-                                builder: (_) =>
-                                    const ServerAddressPage())),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const ServerAddressPage())),
                       ),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading:  Icon(Icons.key,
-                            color: BocchiTheme.pinkDeep),
+                        leading:
+                            Icon(Icons.key, color: BocchiTheme.pinkDeep),
                         title: const Text('SSH 凭据'),
                         subtitle: const Text(
                             '各节点的 SSH 地址与 root 密码（存服务器）',
                             style: TextStyle(fontSize: 12)),
-                        trailing: const Icon(
-                            Icons.chevron_right),
-                        onTap: () => Navigator.of(context)
-                            .push(MaterialPageRoute(
-                                builder: (_) =>
-                                    const SshCredsPage())),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const SshCredsPage())),
                       ),
                     ],
                   ),
                 ),
               ),
-              _themeCard(),
+              // ── 2. 外观：界面主题 / 节点排序 / 遮挡 IP ───────
+              GlassCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('外观',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: BocchiTheme.ink)),
+                      const SizedBox(height: 6),
+                      Text('界面主题',
+                          style: TextStyle(
+                              fontSize: 12, color: BocchiTheme.inkSoft)),
+                      ..._themeTiles(),
+                      const Divider(height: 16),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading:
+                            Icon(Icons.reorder, color: BocchiTheme.pinkDeep),
+                        title: const Text('节点卡片排序'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const NodeOrderPage()),
+                        ),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: Icon(
+                            app.hideIp
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: BocchiTheme.pinkDeep),
+                        title: const Text('遮挡 IP'),
+                        subtitle: const Text(
+                            '截图分享时打码节点 IP，与各页顶栏眼睛按钮同步',
+                            style: TextStyle(fontSize: 12)),
+                        value: app.hideIp,
+                        onChanged: (_) => app.toggleHideIp(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // ── 3. 服务端管理：登录态 + 看板主题/告警/通知 + 退出 ──
               GlassCard(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
@@ -140,29 +168,33 @@ class _SettingsPageState extends State<SettingsPage> {
                     children: [
                       Row(
                         children: [
-                           Text('管理员',
+                          Text('服务端管理',
                               style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   color: BocchiTheme.ink)),
                           const Spacer(),
-                          if (c.admin)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: BocchiTheme.okGreen
-                                    .withValues(alpha: 0.12),
-                                borderRadius:
-                                    BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                '已登录${c.username != null ? ' · ${c.username}' : ''}',
-                                style: const TextStyle(
-                                    fontSize: 12,
-                                    color: BocchiTheme.okGreen,
-                                    fontWeight: FontWeight.w600),
-                              ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: c.admin
+                                  ? BocchiTheme.okGreen.withValues(alpha: 0.12)
+                                  : BocchiTheme.inkSoft
+                                      .withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
                             ),
+                            child: Text(
+                              c.admin
+                                  ? '已登录${c.username != null ? ' · ${c.username}' : ''}'
+                                  : '未登录',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: c.admin
+                                      ? BocchiTheme.okGreen
+                                      : BocchiTheme.inkSoft,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -171,8 +203,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           controller: _user,
                           decoration: const InputDecoration(
                             labelText: '用户名',
-                            prefixIcon:
-                                Icon(Icons.person_outline),
+                            prefixIcon: Icon(Icons.person_outline),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -181,8 +212,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           obscureText: true,
                           decoration: const InputDecoration(
                             labelText: '密码',
-                            prefixIcon:
-                                Icon(Icons.lock_outline),
+                            prefixIcon: Icon(Icons.lock_outline),
                           ),
                           onSubmitted: (_) => _doLogin(),
                         ),
@@ -191,59 +221,43 @@ class _SettingsPageState extends State<SettingsPage> {
                           width: double.infinity,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  BocchiTheme.pinkDeep,
-                              foregroundColor:
-                                  BocchiTheme.onAccent,
+                              backgroundColor: BocchiTheme.pinkDeep,
+                              foregroundColor: BocchiTheme.onAccent,
                             ),
-                            onPressed:
-                                _busy ? null : _doLogin,
+                            onPressed: _busy ? null : _doLogin,
                             child: _busy
                                 ? const SizedBox(
                                     width: 18,
                                     height: 18,
-                                    child:
-                                        CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white),
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white),
                                   )
                                 : const Text('登录'),
                           ),
                         ),
-                         Padding(
-                          padding: EdgeInsets.only(top: 6),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
                           child: Text(
                             '登录后可管理拨测任务与节点（增删改、启停、立即测试、改名、计费信息、排序）。',
                             style: TextStyle(
-                                fontSize: 12,
-                                color: BocchiTheme.inkSoft),
+                                fontSize: 12, color: BocchiTheme.inkSoft),
                           ),
                         ),
                       ] else ...[
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading:  Icon(
-                              Icons.reorder,
-                              color: BocchiTheme.pinkDeep),
-                          title: const Text('节点卡片排序'),
-                          trailing: const Icon(
-                              Icons.chevron_right),
-                          onTap: () =>
-                              Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) =>
-                                    const NodeOrderPage()),
-                          ),
-                        ),
+                        _manageTile(
+                            context, '🎨', '看板主题', const ThemesPage()),
+                        _manageTile(
+                            context, '🚨', '告警规则', const AlertRulesPage()),
+                        _manageTile(
+                            context, '🔔', '通知渠道', const ChannelsPage()),
+                        const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton(
                             style: OutlinedButton.styleFrom(
-                              foregroundColor:
-                                  BocchiTheme.warnRed,
+                              foregroundColor: BocchiTheme.warnRed,
                               side: const BorderSide(
-                                  color:
-                                      BocchiTheme.warnRed),
+                                  color: BocchiTheme.warnRed),
                             ),
                             onPressed: _busy ? null : () async {
                               setState(() => _busy = true);
@@ -261,35 +275,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
               ),
-              if (c.admin)
-                GlassCard(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                         Text('管理',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: BocchiTheme.ink)),
-                        _manageTile(context, '🎨', '主题',
-                            const ThemesPage()),
-                        _manageTile(context, '🚨', '告警规则',
-                            const AlertRulesPage()),
-                        _manageTile(context, '🔔', '通知渠道',
-                            const ChannelsPage()),
-                      ],
-                    ),
-                  ),
-                ),
+              // ── 4. 应用：检查更新（版本信息在按钮文案与页脚） ──
               GlassCard(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                       Text('应用',
+                      Text('应用',
                           style: TextStyle(
                               fontWeight: FontWeight.w700,
                               color: BocchiTheme.ink)),
@@ -297,15 +290,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
-                          icon: const Icon(
-                              Icons.system_update_alt),
+                          icon: const Icon(Icons.system_update_alt),
                           label: Text(_ver.isEmpty
                               ? '检查更新'
                               : '检查更新（当前 v$_ver）'),
-                          onPressed: _busy
-                              ? null
-                              : () =>
-                                  runUpdateCheck(context),
+                          onPressed: _busy ? null : () => runUpdateCheck(context),
                         ),
                       ),
                     ],
@@ -317,9 +306,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Center(
                   child: Text(
                       '探针${_ver.isEmpty ? '' : ' v$_ver'} · 数据来自自建 MyProbe',
-                      style:  TextStyle(
-                          fontSize: 12,
-                          color: BocchiTheme.inkSoft)),
+                      style: TextStyle(
+                          fontSize: 12, color: BocchiTheme.inkSoft)),
                 ),
               ),
             ],
