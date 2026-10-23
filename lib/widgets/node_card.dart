@@ -366,7 +366,10 @@ class _RegionProbesState extends State<_RegionProbes> {
                     ],
                   ),
                   const SizedBox(height: 6),
+                  // key 含节点 id + 当前省份：切省份/切节点时新建 State
+                  // 重播渐进动画；同节点同省份的数据刷新同 key 不重播。
                   PinkBars(
+                      key: ValueKey('pink-${widget.node.id}-$_region'),
                       latencies: p.histLat,
                       oks: p.bars,
                       height: slim ? 5 : 8),

@@ -289,6 +289,8 @@ class _TaskTile extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: PinkBars(
+                    // key 只含任务 id：同任务刷新同 key 不重播渐进动画
+                    key: ValueKey('pink-task-${t.id}'),
                     latencies: t.bars.map((b) => b.latency).toList(),
                     oks: t.bars.map((b) => b.ok).toList(),
                     height: 14,

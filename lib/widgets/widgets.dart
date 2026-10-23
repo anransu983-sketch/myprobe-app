@@ -1,7 +1,122 @@
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
+
+/// 卡片入场渐进（淡入 + 上滑，错峰，只首次 mount 播一次）。
+///
+/// GlassCard 与终端页的普通 Card 共用这一套：GlassCard 不传 [index]，
+/// 走静态 burst 计数——同一批 mount 的卡按 mount 顺序依次延迟
+/// （间隔 55ms，上限 8 张；距上次 mount 超过 700ms 视为新一批，计数重置）；
+/// 终端页三张卡传显式 index 0/1/2，delay = min(index, 8) * 55ms。
+///
+/// 性能铁律：动画只动 opacity / transform（合成层属性，便宜），
+/// 绝不动 BackdropFilter 的 blur sigma——逐帧改 sigma 会让每张玻璃卡
+/// 每帧重做高斯模糊，必掉帧。
+class StaggeredEntrance extends StatefulWidget {
+  final Widget child;
+
+  /// 显式序号（终端页用）；为 null 时走 burst 计数（GlassCard 用）。
+  final int? index;
+  const StaggeredEntrance({super.key, required this.child, this.index});
+
+  static const int _stepMs = 55;
+  static const int _maxStagger = 8;
+  static int _burstCount = 0;
+  static DateTime? _lastMountAt;
+
+  /// burst 模式下取本张卡的延迟，并推进批次计数。
+  static int _nextBurstDelayMs() {
+    final now = DateTime.now();
+    final last = _lastMountAt;
+    if (last == null || now.difference(last).inMilliseconds > 700) {
+      _burstCount = 0;
+    }
+    _lastMountAt = now;
+    final i = _burstCount > _maxStagger ? _maxStagger : _burstCount;
+    _burstCount++;
+    return i * _stepMs;
+  }
+
+  @override
+  State<StaggeredEntrance> createState() => _StaggeredEntranceState();
+}
+
+class _StaggeredEntranceState extends State<StaggeredEntrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  Timer? _delayTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+    );
+    final delayMs = widget.index != null
+        ? (widget.index! > StaggeredEntrance._maxStagger
+                ? StaggeredEntrance._maxStagger
+                : widget.index!) *
+            StaggeredEntrance._stepMs
+        : StaggeredEntrance._nextBurstDelayMs();
+    if (delayMs <= 0) {
+      _ctrl.forward();
+    } else {
+      // 延迟启动可取消：dispose 时 cancel，未触发的回调不会泄漏也不会
+      // 在已卸载的 State 上调 forward。
+      _delayTimer = Timer(Duration(milliseconds: delayMs), () {
+        if (mounted) _ctrl.forward();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _delayTimer?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, child) {
+        final v = Curves.easeOutCubic.transform(_ctrl.value);
+        return Opacity(
+          opacity: v,
+          child: Transform.translate(offset: Offset(0, 14 * (1 - v)), child: child),
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+/// 百分比数字滚动：与 [ThemedProgressBar] 同 duration/curve 的独立
+/// TweenAnimationBuilder——两者是兄弟组件、各自持有一份 tween，互不嵌套，
+/// 避免双重 tween 互相打架。首次从 0 滚到 [pct]，后续 pct 变化时
+/// TweenAnimationBuilder 天然从当前显示值平滑过渡到新值，不从 0 重播。
+class AnimatedPctText extends StatelessWidget {
+  final double pct;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+  const AnimatedPctText(
+      {super.key, required this.pct, this.style, this.textAlign});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: pct),
+      duration: const Duration(milliseconds: 650),
+      curve: Curves.easeOutCubic,
+      builder: (_, v, __) => Text('${v.toStringAsFixed(1)}%',
+          style: style, textAlign: textAlign),
+    );
+  }
+}
 
 /// 全 App 统一卡片（全玻璃）：参数与原 Card 的常用子集对齐（margin/child），
 /// 内部按当前主题定义渲染真逐卡毛玻璃——ClipRRect 圆角裁切 + BackdropFilter
@@ -21,19 +136,23 @@ class GlassCard extends StatelessWidget {
     // 与 CardTheme 默认 margin 一致（原 Card 无显式 margin 时的取值）
     final m =
         margin ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 8);
-    return Padding(
-      padding: m,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: def.cardBlur, sigmaY: def.cardBlur),
-          child: Container(
-            decoration: BoxDecoration(
-              color: def.cardColor,
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(color: def.cardBorder, width: 1),
+    // 入场渐进复用 StaggeredEntrance（burst 错峰，只首次 mount 播）；
+    // 动画只在外层动 opacity/transform，BackdropFilter 的 sigma 保持不变。
+    return StaggeredEntrance(
+      child: Padding(
+        padding: m,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: def.cardBlur, sigmaY: def.cardBlur),
+            child: Container(
+              decoration: BoxDecoration(
+                color: def.cardColor,
+                borderRadius: BorderRadius.circular(radius),
+                border: Border.all(color: def.cardBorder, width: 1),
+              ),
+              child: child,
             ),
-            child: child,
           ),
         ),
       ),
@@ -124,7 +243,10 @@ class _BarsPainter extends CustomPainter {
 }
 
 /// 主题进度条：当前主题定义了 barGradient 时渲染渐变条，否则原样
-/// LinearProgressIndicator（波奇酱走原路径，视觉零变化）
+/// LinearProgressIndicator（波奇酱走原路径，视觉零变化）。
+/// 渐进动画：TweenAnimationBuilder 驱动——首次从 0 长到实际 pct
+/// （650ms easeOutCubic），后续 pct 变化时从当前值平滑过渡到新值，
+/// 不每次从 0 重播。渐变与普通两个分支都受同一个动画值驱动。
 class ThemedProgressBar extends StatelessWidget {
   final double pct; // 0..100
   final double height;
@@ -134,32 +256,39 @@ class ThemedProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final v = (pct / 100).clamp(0.0, 1.0);
     final grad = BocchiTheme.current.barGradient;
-    if (grad == null) {
-      return LinearProgressIndicator(
-        value: v,
-        minHeight: height,
-        backgroundColor: BocchiTheme.pinkLight,
-        valueColor: AlwaysStoppedAnimation(color),
-      );
-    }
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: BocchiTheme.pinkLight,
-        borderRadius: BorderRadius.circular(height / 2),
-      ),
-      child: FractionallySizedBox(
-        alignment: Alignment.centerLeft,
-        widthFactor: v,
-        child: Container(
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: pct),
+      duration: const Duration(milliseconds: 650),
+      curve: Curves.easeOutCubic,
+      builder: (_, animatedPct, __) {
+        final v = (animatedPct / 100).clamp(0.0, 1.0);
+        if (grad == null) {
+          return LinearProgressIndicator(
+            value: v,
+            minHeight: height,
+            backgroundColor: BocchiTheme.pinkLight,
+            valueColor: AlwaysStoppedAnimation(color),
+          );
+        }
+        return Container(
+          height: height,
           decoration: BoxDecoration(
-            gradient: LinearGradient(colors: grad),
+            color: BocchiTheme.pinkLight,
             borderRadius: BorderRadius.circular(height / 2),
           ),
-        ),
-      ),
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: v,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: grad),
+                borderRadius: BorderRadius.circular(height / 2),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -198,11 +327,25 @@ class MetricBar extends StatelessWidget {
           ),
           SizedBox(
             width: 86,
-            child: Text(
-              right ?? (pct == null ? '--' : '${pct!.toStringAsFixed(1)}%'),
-              textAlign: TextAlign.right,
-              style:  TextStyle(fontSize: 12, color: BocchiTheme.ink),
-            ),
+            // 右侧默认百分比文本与进度条同节奏滚动（AnimatedPctText）；
+            // 显式传了 right 或 pct 为空时保持原文本不动画。
+            child: right != null
+                ? Text(
+                    right!,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 12, color: BocchiTheme.ink),
+                  )
+                : pct == null
+                    ? Text(
+                        '--',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(fontSize: 12, color: BocchiTheme.ink),
+                      )
+                    : AnimatedPctText(
+                        pct: pct!,
+                        textAlign: TextAlign.right,
+                        style: TextStyle(fontSize: 12, color: BocchiTheme.ink),
+                      ),
           ),
         ],
       ),
@@ -235,8 +378,12 @@ class OnlineDot extends StatelessWidget {
   }
 }
 
-/// 网页版风格：全粉小柱（延迟条），失败为浅灰粉
-class PinkBars extends StatelessWidget {
+/// 网页版风格：全粉小柱（延迟条），失败为浅灰粉。
+/// 渐进动画：只在 State 首次创建时播一次（约 700ms），每根柱的局部
+/// 进度 t = (progress * n - i) clamp 0..1 再 easeOut，柱高 = 目标高 * t，
+/// 实现从左到右依次升起。同 State 的数据刷新不重播；需要重播的地方
+/// （切省份 / 切节点）由调用方换 key 强制新建 State。
+class PinkBars extends StatefulWidget {
   final List<double?> latencies; // null/<=0 视为失败
   final List<bool>? oks;
   final double height;
@@ -244,12 +391,39 @@ class PinkBars extends StatelessWidget {
       {super.key, required this.latencies, this.oks, this.height = 30});
 
   @override
+  State<PinkBars> createState() => _PinkBarsState();
+}
+
+class _PinkBarsState extends State<PinkBars>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: height,
+      height: widget.height,
       width: double.infinity,
-      child: CustomPaint(
-          painter: _PinkBarsPainter(latencies, oks)),
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (_, __) => CustomPaint(
+            painter:
+                _PinkBarsPainter(widget.latencies, widget.oks, _ctrl.value)),
+      ),
     );
   }
 }
@@ -257,7 +431,8 @@ class PinkBars extends StatelessWidget {
 class _PinkBarsPainter extends CustomPainter {
   final List<double?> latencies;
   final List<bool>? oks;
-  _PinkBarsPainter(this.latencies, this.oks);
+  final double progress; // 0..1 全局动画进度（首次入场）
+  _PinkBarsPainter(this.latencies, this.oks, [this.progress = 1]);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -283,10 +458,15 @@ class _PinkBarsPainter extends CustomPainter {
       final ok = oks == null || i >= oks!.length || oks![i];
       final l = latencies[i];
       final good = ok && l != null && l > 0;
-      final h = good
+      final targetH = good
           ? (4 + (size.height - 4) * (l / maxLat))
               .clamp(4.0, size.height)
           : 4.0;
+      // 局部进度：从左到右错峰，每根柱在自己的时间窗内 easeOut 升起
+      final rawT = (progress * n - i).clamp(0.0, 1.0);
+      final t = 1 - (1 - rawT) * (1 - rawT) * (1 - rawT); // easeOutCubic
+      final h = targetH * t;
+      if (h <= 0) continue;
       final x = i * (w + gap);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
@@ -398,6 +578,12 @@ class WebMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final v = (pct ?? 0).clamp(0.0, 100.0);
+    // 只有 value 本质就是 pct 的百分比文本（'xx.x%'）时才让数字跟着
+    // 进度条同节奏滚动（AnimatedPctText 独立 tween、兄弟组件不嵌套）；
+    // '—' 等非百分比文本保持原样不动画。
+    final isPctText = pct != null && value == '${v.toStringAsFixed(1)}%';
+    final valueStyle = TextStyle(
+        fontSize: 15, fontWeight: FontWeight.w700, color: BocchiTheme.ink);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -411,11 +597,10 @@ class WebMetric extends StatelessWidget {
                     fontSize: 13,
                     color: BocchiTheme.inkSoft)),
             const Spacer(),
-            Text(value,
-                style:  TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: BocchiTheme.ink)),
+            if (isPctText)
+              AnimatedPctText(pct: v, style: valueStyle)
+            else
+              Text(value, style: valueStyle),
           ],
         ),
         const SizedBox(height: 4),

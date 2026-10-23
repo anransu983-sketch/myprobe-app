@@ -214,9 +214,11 @@ class _TerminalTabState extends State<TerminalTab> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
               children: [
-                _quickCard(),
-                _hostsCard(nodes),
-                _snippetCard(),
+                // 终端页保持普通 Card 不玻璃化（既定口径），只借
+                // StaggeredEntrance 做同款入场渐进，index 依次 0/1/2 错峰
+                StaggeredEntrance(index: 0, child: _quickCard()),
+                StaggeredEntrance(index: 1, child: _hostsCard(nodes)),
+                StaggeredEntrance(index: 2, child: _snippetCard()),
               ],
             ),
           );
