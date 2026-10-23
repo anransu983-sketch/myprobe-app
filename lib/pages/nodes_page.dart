@@ -173,7 +173,12 @@ class _NodesPageState extends State<NodesPage> {
           return GestureDetector(
             key: _pillKeys[i],
             onTap: () => _goPage(i),
-            child: Container(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              transform: Matrix4.diagonal3Values(
+                  sel ? 1.0 : 0.96, sel ? 1.0 : 0.96, 1.0),
+              transformAlignment: Alignment.center,
               padding: const EdgeInsets.symmetric(
                   horizontal: 18, vertical: 8),
               decoration: BoxDecoration(
@@ -181,6 +186,16 @@ class _NodesPageState extends State<NodesPage> {
                     ? BocchiTheme.pinkDeep
                     : BocchiTheme.current.cardColor,
                 borderRadius: BorderRadius.circular(20),
+                boxShadow: sel && !BocchiTheme.performanceMode
+                    ? [
+                        BoxShadow(
+                          color: BocchiTheme.pinkDeep
+                              .withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
                 border: sel
                     ? null
                     : Border.all(
@@ -203,8 +218,12 @@ class _NodesPageState extends State<NodesPage> {
   }
 }
 
-/// 全部页：纵向磁吸翻卡
-class _AllPager extends StatelessWidget {
+/// 全部页：纵向磁吸翻卡。
+/// v1.16 Folia 风焦点缩放（学海报墙/Carousel 的中心聚焦）：翻页过程中
+/// 非中心卡缩小到 0.96、透明度降到 0.72，中心卡满格——滑的时候一眼
+/// 知道焦点落在哪张。只动 transform/opacity（合成层，便宜），
+/// 性能模式下关闭、回到原来的硬翻。
+class _AllPager extends StatefulWidget {
   final List<ProbeNode> nodes;
   final void Function(int index) onTapNode;
   final VoidCallback onChanged;
@@ -212,27 +231,60 @@ class _AllPager extends StatelessWidget {
       {required this.nodes,
       required this.onTapNode,
       required this.onChanged});
+  @override
+  State<_AllPager> createState() => _AllPagerState();
+}
+
+class _AllPagerState extends State<_AllPager> {
+  final _vCtrl = PageController();
+  double _pagePos = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _vCtrl.addListener(() {
+      if (_vCtrl.hasClients && _vCtrl.page != null) {
+        setState(() => _pagePos = _vCtrl.page!);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _vCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final nodes = widget.nodes;
     if (nodes.isEmpty) {
-      return  Center(
+      return Center(
           child: Text('暂无节点',
-              style:
-                  TextStyle(color: BocchiTheme.inkSoft)));
+              style: TextStyle(color: BocchiTheme.inkSoft)));
     }
+    final perf = BocchiTheme.performanceMode;
     return PageView.builder(
+      controller: _vCtrl,
       scrollDirection: Axis.vertical,
       pageSnapping: true,
       itemCount: nodes.length,
-      itemBuilder: (_, i) => SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: PhoneNodeCard(
-          node: nodes[i],
-          onChanged: onChanged,
-          onTap: () => onTapNode(i),
-        ),
-      ),
+      itemBuilder: (_, i) {
+        final dist = perf ? 0.0 : (_pagePos - i).abs().clamp(0.0, 1.0);
+        final card = SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: PhoneNodeCard(
+            node: nodes[i],
+            onChanged: widget.onChanged,
+            onTap: () => widget.onTapNode(i),
+          ),
+        );
+        if (perf) return card;
+        return Opacity(
+          opacity: 1 - dist * 0.28,
+          child: Transform.scale(scale: 1 - dist * 0.04, child: card),
+        );
+      },
     );
   }
 }

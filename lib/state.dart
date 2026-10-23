@@ -27,6 +27,10 @@ class AppState extends ChangeNotifier {
   /// 默认 1（静态）：升级后立刻能看到效果，又不费电；不想要随时关。
   int rainMode = 1;
 
+  /// 性能模式（持久化，借鉴 Folia 0.7.22 的手机性能模式）：开后关掉
+  /// 毛玻璃模糊、卡片阴影、在线呼吸与入场动效，只留配色，低端机/省电优先。
+  bool perfMode = false;
+
   Future<void> init() async {
     await client.load();
     final p = await SharedPreferences.getInstance();
@@ -34,7 +38,9 @@ class AppState extends ChangeNotifier {
     probeRegion = p.getString('mp_probe_region');
     themeId = p.getString('mp_theme_id') ?? AppThemeDef.bocchi.id;
     rainMode = p.getInt('mp_rain_mode') ?? 1;
+    perfMode = p.getBool('mp_perf_mode') ?? false;
     BocchiTheme.current = themeDef;
+    BocchiTheme.performanceMode = perfMode;
     ready = true;
     notifyListeners();
   }
@@ -44,6 +50,14 @@ class AppState extends ChangeNotifier {
     BocchiTheme.current = themeDef;
     final p = await SharedPreferences.getInstance();
     await p.setString('mp_theme_id', id);
+    notifyListeners();
+  }
+
+  Future<void> setPerfMode(bool v) async {
+    perfMode = v;
+    BocchiTheme.performanceMode = v;
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('mp_perf_mode', v);
     notifyListeners();
   }
 

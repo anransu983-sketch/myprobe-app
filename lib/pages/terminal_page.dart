@@ -539,10 +539,11 @@ class _TerminalTabState extends State<TerminalTab> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
+      // v1.16: 与省份选择一致改走 GlassSheet 玻璃抽屉（调用处底色透明，
+      // BackdropFilter 才能采样到背后的页面/壁纸）
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => GlassSheet(
+        child: Padding(
         padding: EdgeInsets.only(
             left: 20,
             right: 20,
@@ -577,6 +578,7 @@ class _TerminalTabState extends State<TerminalTab> {
               child: const Text('保存'),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -641,10 +643,11 @@ class _TerminalTabState extends State<TerminalTab> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
+      // v1.16: 与省份选择一致改走 GlassSheet 玻璃抽屉（调用处底色透明，
+      // BackdropFilter 才能采样到背后的页面/壁纸）
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => GlassSheet(
+        child: Padding(
         padding: EdgeInsets.only(
             left: 20,
             right: 20,
@@ -686,6 +689,7 @@ class _TerminalTabState extends State<TerminalTab> {
               label: const Text('连接'),
             ),
           ],
+        ),
         ),
       ),
     );

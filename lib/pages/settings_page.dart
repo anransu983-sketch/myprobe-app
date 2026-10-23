@@ -171,6 +171,18 @@ class _SettingsPageState extends State<SettingsPage> {
                               fontSize: 12, color: BocchiTheme.inkSoft)),
                       ..._rainTiles(),
                       const Divider(height: 16),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: Icon(Icons.speed,
+                            color: BocchiTheme.pinkDeep),
+                        title: const Text('性能模式'),
+                        subtitle: const Text(
+                            '借鉴 Folia：关毛玻璃模糊、卡片阴影与呼吸/入场动效，流畅省电优先',
+                            style: TextStyle(fontSize: 12)),
+                        value: app.perfMode,
+                        onChanged: (v) => app.setPerfMode(v),
+                      ),
+                      const Divider(height: 16),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading:

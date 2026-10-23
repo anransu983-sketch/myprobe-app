@@ -178,6 +178,15 @@ class AppThemeDef {
 class BocchiTheme {
   static AppThemeDef current = AppThemeDef.bocchi;
 
+  /// 性能模式开关（AppState 同步进来；本文件不 import state 防循环）。
+  /// 开后全 App 毛玻璃 blur 归零——学 Folia 性能模式直接关 backdrop-filter，
+  /// 那是合成里最贵的一项；阴影/呼吸/入场动效在各组件里读同一个开关。
+  static bool performanceMode = false;
+
+  /// 实际生效的卡片模糊：性能模式下为 0，其余走主题定义。
+  static double get cardBlur =>
+      performanceMode ? 0 : current.cardBlur;
+
   static Color get pink => current.accent2;
   static Color get pinkDeep => current.accent;
   static Color get pinkLight => current.track;
@@ -218,7 +227,7 @@ class BocchiTheme {
         shadowColor: const Color(0xFFF48FB1).withValues(alpha: 0.25),
         margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(22),
           side: const BorderSide(color: Color(0xFFFCE4EC), width: 1),
         ),
       ),
@@ -267,7 +276,7 @@ class BocchiTheme {
         cardTheme: base.cardTheme.copyWith(
           color: def.cardColor,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(22),
             side: BorderSide(color: def.cardBorder, width: 1),
           ),
         ),
@@ -315,7 +324,7 @@ class BocchiTheme {
         shadowColor: Colors.black.withValues(alpha: 0.35),
         margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(22),
           side: BorderSide(color: def.cardBorder, width: 1),
         ),
       ),

@@ -241,7 +241,7 @@ class PhoneNodeCard extends StatelessWidget {
     return Opacity(
       opacity: n.online ? 1 : 0.62,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(22),
         onTap: onTap,
         child: inner,
       ),

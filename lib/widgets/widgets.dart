@@ -81,6 +81,8 @@ class _StaggeredEntranceState extends State<StaggeredEntrance>
 
   @override
   Widget build(BuildContext context) {
+    // 性能模式（借鉴 Folia）：入场动效直接跳过，静态呈现。
+    if (BocchiTheme.performanceMode) return widget.child;
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, child) {
@@ -128,30 +130,64 @@ class GlassCard extends StatelessWidget {
   final EdgeInsetsGeometry? margin;
   final double radius;
   const GlassCard(
-      {super.key, required this.child, this.margin, this.radius = 16});
+      {super.key, required this.child, this.margin, this.radius = 22});
 
   @override
   Widget build(BuildContext context) {
     final def = BocchiTheme.current;
+    final blur = BocchiTheme.cardBlur;
+    final perf = BocchiTheme.performanceMode;
     // 与 CardTheme 默认 margin 一致（原 Card 无显式 margin 时的取值）
     final m =
         margin ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 8);
     // 入场渐进复用 StaggeredEntrance（burst 错峰，只首次 mount 播）；
     // 动画只在外层动 opacity/transform，BackdropFilter 的 sigma 保持不变。
+    // Folia 风（v1.16）：圆角 16→22、卡外加一层柔和大阴影把卡从壁纸上
+    // 「浮」起来、卡面叠一道左上→右下的微光泽（sheen）模拟玻璃高光；
+    // 阴影必须在 ClipRRect 外层画，否则会被裁掉。性能模式下阴影关、blur 归零。
     return StaggeredEntrance(
       child: Padding(
         padding: m,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: def.cardBlur, sigmaY: def.cardBlur),
-            child: Container(
-              decoration: BoxDecoration(
-                color: def.cardColor,
-                borderRadius: BorderRadius.circular(radius),
-                border: Border.all(color: def.cardBorder, width: 1),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            boxShadow: perf
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black
+                          .withValues(alpha: def.dark ? 0.38 : 0.13),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(radius),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: def.cardColor,
+                  borderRadius: BorderRadius.circular(radius),
+                  border: Border.all(color: def.cardBorder, width: 1),
+                ),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white
+                            .withValues(alpha: def.dark ? 0.05 : 0.10),
+                        Colors.white.withValues(alpha: 0),
+                      ],
+                      stops: const [0, 0.55],
+                    ),
+                  ),
+                  child: child,
+                ),
               ),
-              child: child,
             ),
           ),
         ),
@@ -174,7 +210,7 @@ class GlassSheet extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: def.cardBlur, sigmaY: def.cardBlur),
+        filter: ImageFilter.blur(sigmaX: BocchiTheme.cardBlur, sigmaY: BocchiTheme.cardBlur),
         child: Container(color: def.sheetColor, child: child),
       ),
     );
@@ -353,27 +389,70 @@ class MetricBar extends StatelessWidget {
   }
 }
 
-/// 在线状态圆点
-class OnlineDot extends StatelessWidget {
+/// 在线状态圆点。在线时呼吸发光（v1.16 借鉴 Folia 的
+/// remote-progress-transition-glow：2.4s 一明一暗，光晕涨落）；
+/// 离线保持静态灰点。性能模式下不启动动画、只留静态光晕。
+class OnlineDot extends StatefulWidget {
   final bool online;
   const OnlineDot({super.key, required this.online});
   @override
+  State<OnlineDot> createState() => _OnlineDotState();
+}
+
+class _OnlineDotState extends State<OnlineDot>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.online && !BocchiTheme.performanceMode) {
+      _ctrl = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 1200),
+      )..repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 10,
-      height: 10,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: online ? BocchiTheme.okGreen : Colors.grey,
-        boxShadow: online
-            ? [
-                BoxShadow(
-                    color: BocchiTheme.okGreen.withValues(alpha: 0.5),
-                    blurRadius: 6,
-                    spreadRadius: 1)
-              ]
-            : null,
-      ),
+    if (!widget.online) {
+      return Container(
+        width: 10,
+        height: 10,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.grey,
+        ),
+      );
+    }
+    Widget dot(double t) => Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: BocchiTheme.okGreen,
+            boxShadow: [
+              BoxShadow(
+                color: BocchiTheme.okGreen
+                    .withValues(alpha: 0.35 + 0.30 * t),
+                blurRadius: 5 + 5 * t,
+                spreadRadius: 0.5 + 1.2 * t,
+              ),
+            ],
+          ),
+        );
+    final c = _ctrl;
+    if (c == null) return dot(0.5);
+    return AnimatedBuilder(
+      animation: c,
+      builder: (_, __) => dot(Curves.easeInOut.transform(c.value)),
     );
   }
 }
@@ -522,7 +601,7 @@ class GradientAppBar extends StatelessWidget
       flexibleSpace: ClipRect(
         child: BackdropFilter(
           filter:
-              ImageFilter.blur(sigmaX: def.cardBlur, sigmaY: def.cardBlur),
+              ImageFilter.blur(sigmaX: BocchiTheme.cardBlur, sigmaY: BocchiTheme.cardBlur),
           child: Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -541,9 +620,10 @@ class GradientAppBar extends StatelessWidget
   }
 }
 
-/// 底部导航的玻璃壳：与 [GlassCard] 同一套参数——ClipRect + BackdropFilter
-/// （sigma = 主题 cardBlur）采样条子底下的壁纸，导航本体继续用主题 navBg
-/// 半透明底色，拼成跟主题走的毛玻璃底栏（三款主题一致），不再实心切断壁纸。
+/// 底部导航壳（v1.16 Folia 风）：从贴边长条改成悬浮胶囊——四周留 12px
+/// 空隙、圆角 32、柔和阴影，学 Folia 悬浮播放胶囊的
+/// backdrop-blur + rounded-full + shadow-2xl。仍放在 bottomNavigationBar
+/// 槽位里，槽位高度含留白，页面内容不会被胶囊盖住，不用改各页 padding。
 class GlassBottomBar extends StatelessWidget {
   final Widget child;
   const GlassBottomBar({super.key, required this.child});
@@ -551,10 +631,33 @@ class GlassBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final def = BocchiTheme.current;
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: def.cardBlur, sigmaY: def.cardBlur),
-        child: child,
+    final perf = BocchiTheme.performanceMode;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: def.cardBorder, width: 1),
+          boxShadow: perf
+              ? null
+              : [
+                  BoxShadow(
+                    color: Colors.black
+                        .withValues(alpha: def.dark ? 0.42 : 0.16),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(32),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(
+                sigmaX: BocchiTheme.cardBlur,
+                sigmaY: BocchiTheme.cardBlur),
+            child: child,
+          ),
+        ),
       ),
     );
   }
