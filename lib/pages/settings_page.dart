@@ -63,6 +63,42 @@ class _SettingsPageState extends State<SettingsPage> {
     ];
   }
 
+  /// 雨滴效果三档条目（关 / 静态 / 动态），放「外观」卡内、主题列表之后
+  List<Widget> _rainTiles() {
+    final cur = AppState.instance.rainMode;
+    const modes = [
+      (0, '关', '无效果，壁纸保持干净'),
+      (1, '静态水滴', '水滴贴在壁纸上不动，省电'),
+      (2, '动态滑落', '水滴会生长、滑落后重生，略费电'),
+    ];
+    return [
+      for (final (mode, name, desc) in modes)
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: BocchiTheme.pinkLight.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+                mode == 0
+                    ? Icons.water_drop_outlined
+                    : Icons.water_drop,
+                color: BocchiTheme.pinkDeep,
+                size: 22),
+          ),
+          title: Text(name),
+          subtitle: Text(desc, style: const TextStyle(fontSize: 12)),
+          trailing: cur == mode
+              ? Icon(Icons.check_circle, color: BocchiTheme.pinkDeep)
+              : Icon(Icons.circle_outlined, color: BocchiTheme.inkSoft),
+          onTap: () => AppState.instance.setRainMode(mode),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -129,6 +165,11 @@ class _SettingsPageState extends State<SettingsPage> {
                           style: TextStyle(
                               fontSize: 12, color: BocchiTheme.inkSoft)),
                       ..._themeTiles(),
+                      const Divider(height: 16),
+                      Text('雨滴效果',
+                          style: TextStyle(
+                              fontSize: 12, color: BocchiTheme.inkSoft)),
+                      ..._rainTiles(),
                       const Divider(height: 16),
                       ListTile(
                         contentPadding: EdgeInsets.zero,

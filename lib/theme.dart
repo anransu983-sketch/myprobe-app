@@ -1,5 +1,7 @@
+import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 
 /// 一套主题的全部参数：配色 + 壁纸 + 玻璃参数。
 /// 页面取色统一走 [BocchiTheme] 门面（历史命名），门面背后就是当前这套定义，
@@ -359,7 +361,11 @@ class BocchiTheme {
 /// 罩色负责文字直压壁纸处的可读性（毛玻璃版压暗、黄昏提亮、波奇酱粉白轻罩）。
 class AppBackground extends StatelessWidget {
   final Widget child;
-  const AppBackground({super.key, required this.child});
+
+  /// 雨滴效果档位：0=关 1=静态 2=动态。由 main.dart 从 AppState 传入
+  /// （state.dart import 本文件，本文件不能反向 import state，防循环）。
+  final int rainMode;
+  const AppBackground({super.key, required this.child, this.rainMode = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -378,8 +384,262 @@ class AppBackground extends StatelessWidget {
           )
         else
           Positioned.fill(child: Container(color: def.scrim)),
+        // 雨滴层在罩色之上、child 之下：水滴贴在壁纸「玻璃」上，
+        // child 里的玻璃卡各自带 BackdropFilter，会把背后的水滴再糊
+        // 一层——正是雨落玻璃的效果。IgnorePointer 绝不挡手势。
+        if (rainMode > 0)
+          const Positioned.fill(
+            child: IgnorePointer(child: _StaticRainLayer()),
+          ),
+        if (rainMode == 2)
+          const Positioned.fill(
+            child: IgnorePointer(child: _DynamicRainLayer()),
+          ),
         child,
       ],
     );
   }
+}
+
+/// 一颗水珠的画法（静态/动态共用）：贴在玻璃上的水滴感靠三笔——
+/// 主体半透明白填充让壁纸隐约透出（折射的错觉）、底部一弯暗色月牙
+/// 是水珠下缘的阴影、左上一颗小高光点是光源反射。整体 alpha 克制，
+/// 只做氛围、不抢壁纸和卡片读数。
+void _paintDroplet(Canvas canvas, Offset c, double r, double opacity) {
+  if (r <= 0 || opacity <= 0) return;
+  // 主体
+  canvas.drawCircle(
+    c,
+    r,
+    Paint()..color = Colors.white.withValues(alpha: 0.10 * opacity),
+  );
+  // 底部月牙阴影：裁进圆内的一片下移椭圆
+  canvas.save();
+  canvas.clipPath(Path()..addOval(Rect.fromCircle(center: c, radius: r)));
+  canvas.drawOval(
+    Rect.fromCenter(
+        center: Offset(c.dx, c.dy + r * 0.62),
+        width: r * 1.9,
+        height: r * 1.05),
+    Paint()..color = Colors.black.withValues(alpha: 0.10 * opacity),
+  );
+  canvas.restore();
+  // 边缘一圈淡淡的亮边，勾出水珠轮廓
+  canvas.drawCircle(
+    c,
+    r,
+    Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = (r * 0.10).clamp(0.6, 1.4)
+      ..color = Colors.white.withValues(alpha: 0.14 * opacity),
+  );
+  // 左上高光
+  canvas.drawOval(
+    Rect.fromCenter(
+        center: Offset(c.dx - r * 0.34, c.dy - r * 0.40),
+        width: r * 0.52,
+        height: r * 0.34),
+    Paint()..color = Colors.white.withValues(alpha: 0.50 * opacity),
+  );
+  canvas.drawCircle(
+    Offset(c.dx - r * 0.38, c.dy - r * 0.44),
+    r * 0.10,
+    Paint()..color = Colors.white.withValues(alpha: 0.65 * opacity),
+  );
+}
+
+/// 静态水滴层：程序化生成（固定种子 Random(42)，不引图片资源），
+/// 刷新/重建时布局稳定不乱跳。密度按画布面积约 90–120 颗，
+/// 半径大多 2–14、约 8% 是 16–24 的大颗，对着原图（音乐 App 歌词页
+/// 雨滴截图）的疏密与大小分布。画完即静止，零持续开销。
+class _StaticRainLayer extends StatelessWidget {
+  const _StaticRainLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: _StaticRainPainter(), size: Size.infinite);
+  }
+}
+
+class _StaticRainPainter extends CustomPainter {
+  // 按画布尺寸缓存生成结果：同一尺寸只生成一次
+  Size? _genSize;
+  List<({Offset pos, double r})> _drops = const [];
+
+  void _generate(Size size) {
+    if (_genSize == size) return;
+    _genSize = size;
+    final rnd = math.Random(42);
+    final count = (size.width * size.height / 3400).round().clamp(90, 120);
+    _drops = [
+      for (var i = 0; i < count; i++)
+        (
+          pos: Offset(
+              rnd.nextDouble() * size.width, rnd.nextDouble() * size.height),
+          // pow 偏斜：多数是小颗，偶尔中大颗；另有约 8% 的显眼大颗
+          r: rnd.nextDouble() < 0.08
+              ? 16 + rnd.nextDouble() * 8
+              : 2 + math.pow(rnd.nextDouble(), 2.0) * 12,
+        ),
+    ];
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    _generate(size);
+    for (final d in _drops) {
+      _paintDroplet(canvas, d.pos, d.r, 1);
+    }
+  }
+
+  // 配置从不变化：尺寸变化时 RenderCustomPaint 会因自身 resize 重画，
+  // 不需要靠 shouldRepaint；档位切换是整层 widget 的加/减，也不走这里。
+  @override
+  bool shouldRepaint(covariant _StaticRainPainter oldDelegate) => false;
+}
+
+/// 动态滑落的一颗活动水滴：生命周期 =
+/// 在原地缓慢生长（半径 2 → 阈值 7–12）→ 重力加速滑落（左右轻摆、
+/// 身后留拖尾）→ 半路溶小或落出画面消散 → 上方随机位置重生。
+class _ActiveDrop {
+  double x, y, r, targetR, vy = 0, wobble;
+  bool sliding = false;
+  double trailTimer = 0;
+  final List<({double x, double y, double r, double a})> trail = [];
+  _ActiveDrop(this.x, this.y, this.r, this.targetR, this.wobble);
+}
+
+/// 动态水滴的物理状态 + 逐帧推进。Ticker 每帧调 tick()，状态推进后
+/// notifyListeners 驱动 CustomPaint 重画（repaint listenable），
+/// 不经 setState、不重建 widget 树。
+class _RainModel extends ChangeNotifier {
+  static const int _count = 24;
+  final math.Random _rnd = math.Random(7);
+  final List<_ActiveDrop> drops = [];
+  Size _size = Size.zero;
+  Duration _last = Duration.zero;
+
+  void attachSize(Size s) {
+    if (s == _size) return;
+    _size = s;
+    if (drops.isEmpty && !s.isEmpty) {
+      for (var i = 0; i < _count; i++) {
+        drops.add(_spawn(anywhere: true));
+      }
+    }
+  }
+
+  _ActiveDrop _spawn({bool anywhere = false}) {
+    // 重生在上方区域随机位置；初生（anywhere）则铺满全屏错开相位
+    return _ActiveDrop(
+      _rnd.nextDouble() * _size.width,
+      anywhere
+          ? _rnd.nextDouble() * _size.height
+          : _rnd.nextDouble() * _size.height * 0.45,
+      2,
+      7 + _rnd.nextDouble() * 5,
+      _rnd.nextDouble() * math.pi * 2,
+    );
+  }
+
+  void tick(Duration elapsed) {
+    if (_size.isEmpty || drops.isEmpty) return;
+    var dt = (elapsed - _last).inMicroseconds / 1e6;
+    _last = elapsed;
+    if (dt <= 0) return;
+    if (dt > 0.05) dt = 0.05; // 切后台回来等大间隔钳住，别一帧跳老远
+    for (var i = 0; i < drops.length; i++) {
+      final d = drops[i];
+      // 拖尾小水滴：渐渐变淡变小，淡尽移除
+      d.trail.removeWhere((t) => t.a <= 0.02);
+      for (var j = 0; j < d.trail.length; j++) {
+        final t = d.trail[j];
+        d.trail[j] = (x: t.x, y: t.y, r: t.r * (1 - dt * 0.5), a: t.a - dt * 0.45);
+      }
+      if (!d.sliding) {
+        d.r += dt * 1.4; // 生长约 4–7 秒长满，节奏压慢才有「凝结」感
+        if (d.r >= d.targetR) d.sliding = true;
+      } else {
+        d.vy = math.min(d.vy + 300 * dt, 200); // 重力加速 + 限速
+        d.wobble += dt * 6;
+        d.x += math.sin(d.wobble) * 14 * dt; // 左右轻摆，不是笔直掉
+        d.y += d.vy * dt;
+        d.r -= dt * 1.15; // 滑落途中溶小
+        d.trailTimer += dt;
+        if (d.trailTimer > 0.05 && d.vy > 30) {
+          d.trailTimer = 0;
+          d.trail.add((x: d.x, y: d.y - d.r, r: d.r * 0.5, a: 0.55));
+        }
+        if (d.r < 2.2 || d.y > _size.height + 30) {
+          drops[i] = _spawn();
+        }
+      }
+    }
+    notifyListeners();
+  }
+}
+
+/// 动态滑落层：在静态底纹之上再叠活动水滴。
+/// 数量（约 24 颗）和帧率克制是刻意的：这一层躺在所有玻璃卡的
+/// BackdropFilter 背后，背后动得越凶，每张卡每帧重采样的面积越大，
+/// 越费电；24 颗慢节奏足够氛围。Ticker 只在本层挂载时存在——档位
+/// 不是动态时整层不在树上，自动停转，不空转。
+class _DynamicRainLayer extends StatefulWidget {
+  const _DynamicRainLayer();
+
+  @override
+  State<_DynamicRainLayer> createState() => _DynamicRainLayerState();
+}
+
+class _DynamicRainLayerState extends State<_DynamicRainLayer>
+    with SingleTickerProviderStateMixin {
+  final _RainModel _model = _RainModel();
+  late final Ticker _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker(_model.tick)..start();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    _model.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (_, constraints) {
+        _model.attachSize(
+            Size(constraints.maxWidth, constraints.maxHeight));
+        return CustomPaint(
+          painter: _DynamicRainPainter(_model),
+          size: Size.infinite,
+        );
+      },
+    );
+  }
+}
+
+class _DynamicRainPainter extends CustomPainter {
+  final _RainModel model;
+  _DynamicRainPainter(this.model) : super(repaint: model);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final d in model.drops) {
+      for (final t in d.trail) {
+        _paintDroplet(canvas, Offset(t.x, t.y), t.r, t.a.clamp(0.0, 1.0));
+      }
+      _paintDroplet(canvas, Offset(d.x, d.y), d.r, 1);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DynamicRainPainter oldDelegate) =>
+      oldDelegate.model != model;
 }

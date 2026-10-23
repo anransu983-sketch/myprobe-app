@@ -21,8 +21,10 @@ class MyProbeApp extends StatelessWidget {
       builder: (_, __) => MaterialApp(
         title: '探针',
         theme: BocchiTheme.themeDataFor(AppState.instance.themeDef),
-        builder: (_, child) =>
-            AppBackground(child: child ?? const SizedBox()),
+        builder: (_, child) => AppBackground(
+            // 背景层在 theme.dart、不能 import state（循环），档位从这里传
+            rainMode: AppState.instance.rainMode,
+            child: child ?? const SizedBox()),
         home: const _Boot(),
         debugShowCheckedModeBanner: false,
       ),

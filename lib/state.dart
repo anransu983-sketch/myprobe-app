@@ -23,12 +23,17 @@ class AppState extends ChangeNotifier {
   String themeId = AppThemeDef.bocchi.id;
   AppThemeDef get themeDef => AppThemeDef.byId(themeId);
 
+  /// 雨滴效果档位（持久化）：0=关 1=静态水滴 2=动态滑落。
+  /// 默认 1（静态）：升级后立刻能看到效果，又不费电；不想要随时关。
+  int rainMode = 1;
+
   Future<void> init() async {
     await client.load();
     final p = await SharedPreferences.getInstance();
     hideIp = p.getBool('mp_hide_ip') ?? false;
     probeRegion = p.getString('mp_probe_region');
     themeId = p.getString('mp_theme_id') ?? AppThemeDef.bocchi.id;
+    rainMode = p.getInt('mp_rain_mode') ?? 1;
     BocchiTheme.current = themeDef;
     ready = true;
     notifyListeners();
@@ -39,6 +44,13 @@ class AppState extends ChangeNotifier {
     BocchiTheme.current = themeDef;
     final p = await SharedPreferences.getInstance();
     await p.setString('mp_theme_id', id);
+    notifyListeners();
+  }
+
+  Future<void> setRainMode(int mode) async {
+    rainMode = mode;
+    final p = await SharedPreferences.getInstance();
+    await p.setInt('mp_rain_mode', mode);
     notifyListeners();
   }
 
