@@ -194,7 +194,7 @@ class PhoneNodeCard extends StatelessWidget {
                             ? '${n.quotaPct.toStringAsFixed(1)}%'
                             : '—',
                         caption: n.quotaGb > 0
-                            ? '${(n.monthRxGb + n.monthTxGb).toStringAsFixed(1)} GB / ${n.quotaGb.toStringAsFixed(0)} GB'
+                            ? '${(n.quotaUsedGb > 0 ? n.quotaUsedGb : n.monthRxGb + n.monthTxGb).toStringAsFixed(1)} GB / ${n.quotaGb.toStringAsFixed(0)} GB'
                             : '未设配额')),
               ],
             ),
@@ -209,8 +209,11 @@ class PhoneNodeCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                     child: WebStatBox(
-                        line1:
-                            '↑${n.monthTxGb.toStringAsFixed(1)} GB\n↓${n.monthRxGb.toStringAsFixed(1)} GB',
+                        line1: n.quotaUsedGb > 0 &&
+                                n.quotaUsedGb >
+                                    n.monthRxGb + n.monthTxGb
+                            ? '合计 ${n.quotaUsedGb.toStringAsFixed(1)} GB\n↑${n.monthTxGb.toStringAsFixed(1)} ↓${n.monthRxGb.toStringAsFixed(1)}'
+                            : '↑${n.monthTxGb.toStringAsFixed(1)} GB\n↓${n.monthRxGb.toStringAsFixed(1)} GB',
                         line2: '本月流量')),
                 const SizedBox(width: 8),
                 Expanded(

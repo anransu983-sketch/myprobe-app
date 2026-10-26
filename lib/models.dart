@@ -28,6 +28,7 @@ class ProbeNode {
   final double monthTxGb;
   final double quotaGb;
   final double quotaPct;
+  final double quotaUsedGb;
   final int lastSeen;
   final String? sshHost;
   final int? sshPort;
@@ -63,6 +64,7 @@ class ProbeNode {
     this.monthTxGb = 0,
     this.quotaGb = 0,
     this.quotaPct = 0,
+    this.quotaUsedGb = 0,
     this.lastSeen = 0,
     this.sshHost,
     this.sshPort,
@@ -104,6 +106,7 @@ class ProbeNode {
         monthTxGb: _d(j['month_tx_gb']) ?? 0,
         quotaGb: _d(j['quota_gb']) ?? 0,
         quotaPct: _d(j['quota_pct']) ?? 0,
+        quotaUsedGb: _d(j['quota_used_gb']) ?? 0,
         lastSeen: _i(j['last_seen']) ?? 0,
         sshHost: j['ssh_host']?.toString(),
         sshPort: _i(j['ssh_port']),
