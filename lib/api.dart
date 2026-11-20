@@ -78,15 +78,14 @@ class MyProbeClient {
   }
 
   Future<Map<String, dynamic>> _sendJson(
-      String method, String path, Map<String, dynamic> body) async {
+      String method, String path, Map<String, dynamic> body,
+      {Duration timeout = const Duration(seconds: 15)}) async {
     final uri = Uri.parse('$baseUrl$path');
     final req = http.Request(method, uri);
     req.headers.addAll(_headers);
     req.headers['Content-Type'] = 'application/json';
     req.body = json.encode(body);
-    final streamed = await _http.send(req).timeout(
-          const Duration(seconds: 15),
-        );
+    final streamed = await _http.send(req).timeout(timeout);
     final r = await http.Response.fromStream(streamed);
     if (r.statusCode == 401) throw NeedLogin();
     final j = json.decode(r.body) as Map<String, dynamic>;
@@ -122,6 +121,170 @@ class MyProbeClient {
         .map((e) => ProbeTask.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
+  // ---------- v6.7：节点详情新数据（公开只读） ----------
+
+  /// 三网延迟：{telecom/unicom/mobile: {ts(ms), lat, loss, latest}}
+  Future<Map<String, dynamic>> getNetq(String nid) async {
+    final j = await _get('/api/netq/$nid', {'range': '24h'})
+        as Map<String, dynamic>;
+    return (j['netq'] as Map?)?.cast<String, dynamic>() ?? {};
+  }
+
+  /// MTR 逐跳：{target: {ts, hops: [{n, host, loss, avg}], signature}}
+  Future<Map<String, dynamic>> getMtr(String nid) async {
+    final j = await _get('/api/mtr/$nid') as Map<String, dynamic>;
+    return (j['mtr'] as Map?)?.cast<String, dynamic>() ?? {};
+  }
+
+  /// 解锁检测：[{service, ts, ok, code}]
+  Future<List<Map<String, dynamic>>> getUnlock(String nid) async {
+    final j = await _get('/api/unlock/$nid') as Map<String, dynamic>;
+    return (j['unlock'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  /// 在线状态：{days, since(s), now(s), online, events: [{ts, event}]}
+  Future<Map<String, dynamic>> getUptime(String nid) async {
+    return await _get('/api/uptime/$nid', {'days': '7'})
+        as Map<String, dynamic>;
+  }
+
+  /// 硬盘写满预测：{slope_per_day, days_left, latest, note?}
+  Future<Map<String, dynamic>> getDiskForecast(String nid) async {
+    return await _get('/api/disk-forecast/$nid') as Map<String, dynamic>;
+  }
+
+  // ---------- v6.7 管理：账单 ----------
+
+  Future<List<Map<String, dynamic>>> billingList() async {
+    final j = await _get('/api/admin/billing') as Map<String, dynamic>;
+    return (j['billing'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  /// 按商家汇总每月花费：{vendor: [{currency, monthly}]}
+  Future<Map<String, dynamic>> billingSummary() async {
+    final j = await _get('/api/admin/billing/summary')
+        as Map<String, dynamic>;
+    return (j['summary'] as Map?)?.cast<String, dynamic>() ?? {};
+  }
+
+  Future<void> billingSave(
+      {int? id, required Map<String, dynamic> d}) {
+    return id == null
+        ? _sendJson('POST', '/api/admin/billing', d)
+        : _sendJson('PUT', '/api/admin/billing/$id', d);
+  }
+
+  Future<void> billingDelete(int id) =>
+      _sendJson('DELETE', '/api/admin/billing/$id', {});
+
+  // ---------- v6.7 管理：域名 ----------
+
+  Future<List<Map<String, dynamic>>> domainsList() async {
+    final j = await _get('/api/admin/domains') as Map<String, dynamic>;
+    return (j['domains'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  Future<void> domainSave(
+      {int? id, required Map<String, dynamic> d}) {
+    return id == null
+        ? _sendJson('POST', '/api/admin/domains', d)
+        : _sendJson('PUT', '/api/admin/domains/$id', d);
+  }
+
+  Future<void> domainDelete(int id) =>
+      _sendJson('DELETE', '/api/admin/domains/$id', {});
+
+  /// RDAP 自动拉到期日，返回新的 expire_date（YYYY-MM-DD）
+  Future<String> domainRdap(int id) async {
+    final j = await _sendJson('POST', '/api/admin/domains/$id/rdap', {});
+    return '${j['expire_date']}';
+  }
+
+  // ---------- v6.7 管理：运行周报 ----------
+
+  Future<Map<String, dynamic>> weeklyGet() async {
+    return await _get('/api/admin/weekly') as Map<String, dynamic>;
+  }
+
+  Future<void> weeklySave(
+      {required bool enabled, required String channel}) =>
+      _sendJson('POST', '/api/admin/weekly',
+          {'enabled': enabled, 'channel': channel});
+
+  Future<void> weeklyTest() =>
+      _sendJson('POST', '/api/admin/weekly/test', {});
+
+  // ---------- v6.7 管理：AI 分析 ----------
+
+  /// {endpoint, model, configured}
+  Future<Map<String, dynamic>> aiGet() async {
+    return await _get('/api/admin/ai') as Map<String, dynamic>;
+  }
+
+  /// key 为空 = 保持原值（服务端永不回显）
+  Future<void> aiSave(
+          {required String endpoint,
+          required String model,
+          required String key}) =>
+      _sendJson('POST', '/api/admin/ai',
+          {'endpoint': endpoint, 'model': model, 'key': key});
+
+  /// 服务端调模型最长 90 秒，客户端超时放宽到 100 秒
+  Future<String> aiAnalyze(String nid) async {
+    final j = await _sendJson('POST', '/api/admin/ai/analyze',
+        {'node_id': nid},
+        timeout: const Duration(seconds: 100));
+    return '${j['analysis'] ?? ''}';
+  }
+
+  // ---------- v6.7 管理：两步验证 ----------
+
+  /// {enabled, configured}
+  Future<Map<String, dynamic>> totpGet() async {
+    return await _get('/api/admin/totp') as Map<String, dynamic>;
+  }
+
+  /// 生成 secret（已配时返回现有）+ otpauth 链接
+  Future<Map<String, dynamic>> totpSetup() async {
+    return await _sendJson('POST', '/api/admin/totp/setup', {});
+  }
+
+  /// 验证通过即开启，返回 8 个备用码（只显示一次）
+  Future<List<String>> totpVerify(String code) async {
+    final j = await _sendJson(
+        'POST', '/api/admin/totp/verify', {'code': code});
+    return ((j['backup_codes'] as List?) ?? [])
+        .map((e) => '$e')
+        .toList();
+  }
+
+  Future<void> totpDisable() =>
+      _sendJson('POST', '/api/admin/totp/disable', {});
+
+  // ---------- v6.7 管理：操作审计 ----------
+
+  Future<List<Map<String, dynamic>>> auditList({int limit = 100}) async {
+    final j = await _get('/api/admin/audit', {'limit': '$limit'})
+        as Map<String, dynamic>;
+    return (j['audit'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  // ---------- v6.7 管理：公开 API 令牌 ----------
+
+  /// [{id, name, created, last_used}]（不含明文）
+  Future<List<Map<String, dynamic>>> apiTokensList() async {
+    final j = await _get('/api/admin/api-tokens') as Map<String, dynamic>;
+    return (j['tokens'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  /// 创建后返回 {id, token}，明文只出现这一次
+  Future<Map<String, dynamic>> apiTokenCreate(String name) async {
+    return await _sendJson('POST', '/api/admin/api-tokens', {'name': name});
+  }
+
+  Future<void> apiTokenDelete(int id) =>
+      _sendJson('DELETE', '/api/admin/api-tokens/$id', {});
 
   // ---------- 登录 ----------
 

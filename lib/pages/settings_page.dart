@@ -303,6 +303,20 @@ class _SettingsPageState extends State<SettingsPage> {
                             context, '🚨', '告警规则', const AlertRulesPage()),
                         _manageTile(
                             context, '🔔', '通知渠道', const ChannelsPage()),
+                        _manageTile(
+                            context, '💰', '账单与续费', const BillingPage()),
+                        _manageTile(
+                            context, '🌐', '域名到期', const DomainsPage()),
+                        _manageTile(
+                            context, '📊', '运行周报', const WeeklyPage()),
+                        _manageTile(
+                            context, '🤖', 'AI 分析', const AiPage()),
+                        _manageTile(
+                            context, '🔐', '两步验证', const TotpPage()),
+                        _manageTile(
+                            context, '📋', '操作审计', const AuditPage()),
+                        _manageTile(
+                            context, '🔑', 'API 令牌', const ApiTokensPage()),
                         const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,

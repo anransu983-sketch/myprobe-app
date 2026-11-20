@@ -29,6 +29,16 @@ class ProbeNode {
   final double quotaGb;
   final double quotaPct;
   final double quotaUsedGb;
+  final int? quotaForecastDays; // v6.7：预计多少天后超额（null=不会超额）
+  final String? quotaForecastDate;
+  final double? remainValue; // v6.7：剩余价值
+  // v6.7：IP 质量（服务端每小时查 ip-api.com）
+  final String? ipCountry;
+  final String? ipIsp;
+  final String? ipAsn;
+  final bool ipProxy;
+  final bool ipHosting;
+  final bool ipMobile;
   final int lastSeen;
   final String? sshHost;
   final int? sshPort;
@@ -65,6 +75,15 @@ class ProbeNode {
     this.quotaGb = 0,
     this.quotaPct = 0,
     this.quotaUsedGb = 0,
+    this.quotaForecastDays,
+    this.quotaForecastDate,
+    this.remainValue,
+    this.ipCountry,
+    this.ipIsp,
+    this.ipAsn,
+    this.ipProxy = false,
+    this.ipHosting = false,
+    this.ipMobile = false,
     this.lastSeen = 0,
     this.sshHost,
     this.sshPort,
@@ -107,6 +126,15 @@ class ProbeNode {
         quotaGb: _d(j['quota_gb']) ?? 0,
         quotaPct: _d(j['quota_pct']) ?? 0,
         quotaUsedGb: _d(j['quota_used_gb']) ?? 0,
+        quotaForecastDays: _i(j['quota_forecast_days']),
+        quotaForecastDate: j['quota_forecast_date']?.toString(),
+        remainValue: _d(j['remain_value']),
+        ipCountry: j['ip_country']?.toString(),
+        ipIsp: j['ip_isp']?.toString(),
+        ipAsn: j['ip_asn']?.toString(),
+        ipProxy: j['ip_proxy'] == true,
+        ipHosting: j['ip_hosting'] == true,
+        ipMobile: j['ip_mobile'] == true,
         lastSeen: _i(j['last_seen']) ?? 0,
         sshHost: j['ssh_host']?.toString(),
         sshPort: _i(j['ssh_port']),
