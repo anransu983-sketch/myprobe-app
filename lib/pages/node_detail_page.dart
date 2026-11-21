@@ -160,95 +160,100 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
-          PhoneNodeCard(node: n, onChanged: _fetch),
+          PhoneNodeCard(
+              node: n, onChanged: _fetch, compact: true, probesStyle: ProbesStyle.slim),
           // 图表范围选择器紧贴图表上方（原在页底、流量卡之下，控制关系反了）；
           // 流量卡自带的今日/本周开关在流量卡内，两者作用域从此分开
           _rangeCard(),
           _chartCard('CPU / 内存 (%)', [
             _Series('CPU', _hist?.cpu, BocchiTheme.pinkDeep),
             _Series('内存', _hist?.mem, const Color(0xFF7B61FF)),
-          ], (v) => '${v.toStringAsFixed(0)}%'),
+          ], (v) => '${v.toStringAsFixed(0)}%',
+              forceMinY: 0, forceMaxY: 100, yInterval: 25),
           _chartCard('实时网速', [
             _Series('下行', _hist?.rx.map((e) => e == null ? null : e / 1024).toList(), BocchiTheme.okGreen),
             _Series('上行', _hist?.tx.map((e) => e == null ? null : e / 1024).toList(), BocchiTheme.pinkDeep),
           ], (v) => v >= 1024 ? '${(v / 1024).toStringAsFixed(1)}M' : '${v.toStringAsFixed(0)}K',
               softCap: true),
           if (_daily.isNotEmpty) _trafficCard(),
-          _ipCard(n),
-          _forecastCard(n),
+          // 稀疏信息合一张「状态概览」：IP 质量 / 流量超额预测 / 在线状态 /
+          // 硬盘写满预测原来各占一张全宽大卡、每张只有一两行字，留白巨大
+          _overviewCard(n),
           _netqCard(),
           _unlockCard(),
           _mtrCard(),
-          _uptimeCard(),
-          _diskCard(),
         ],
       ),
     );
   }
 
+  // 图表范围：只是一行小开关，不配占一张全宽大卡，改成无卡片的细条
   Widget _rangeCard() {
-    return GlassCard(
-      child: Padding(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          children: [
-             Text('图表范围',
-                style: TextStyle(
-                    color: BocchiTheme.inkSoft,
-                    fontSize: 13)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (final r in _ranges)
-                      Padding(
-                        padding:
-                            const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(_rangeLabels[r]!,
-                              style: const TextStyle(
-                                  fontSize: 12)),
-                          selected: _range == r,
-                          selectedColor:
-                              BocchiTheme.pinkDeep,
-                          labelStyle: TextStyle(
-                              color: _range == r
-                                  ? Colors.white
-                                  : BocchiTheme.ink),
-                          onSelected: (_) {
-                            setState(() => _range = r);
-                            _fetch();
-                          },
-                        ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      child: Row(
+        children: [
+           Text('图表范围',
+              style: TextStyle(
+                  color: BocchiTheme.inkSoft,
+                  fontSize: 13)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final r in _ranges)
+                    Padding(
+                      padding:
+                          const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(_rangeLabels[r]!,
+                            style: const TextStyle(
+                                fontSize: 12)),
+                        selected: _range == r,
+                        selectedColor:
+                            BocchiTheme.pinkDeep,
+                        labelStyle: TextStyle(
+                            color: _range == r
+                                ? Colors.white
+                                : BocchiTheme.ink),
+                        onSelected: (_) {
+                          setState(() => _range = r);
+                          _fetch();
+                        },
                       ),
-                  ],
-                ),
+                    ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _chartCard(String title, List<_Series> series,
       String Function(double) fmtY,
-      {bool softCap = false, String? subtitle, int? xCount}) {
+      {bool softCap = false,
+      String? subtitle,
+      int? xCount,
+      double? forceMinY,
+      double? forceMaxY,
+      double? yInterval}) {
     final h = _hist;
     final xLen = xCount ?? (h?.ts.length ?? 0);
     // 量程软化（仅网速图 softCap）：单个尖峰会把自动量程顶爆、其余曲线压成
     // 直线。改为：全部数据点的 95 分位 ×1.25 当 maxY，尖峰照真实高度画、
     // 超出部分被图顶截断（clipData）；数据点一个不改，触摸提示仍是真实值。
     // 尖峰不够突出（最大值 ≤ 95 分位 ×2）时不干预，沿用自动量程。
+    // 负值下限裁剪：速率异常值会冲到零线以下、线掉出坐标轴，先钳到 0。
     double? softMaxY;
     if (softCap) {
       final all = <double>[];
       for (final s in series) {
         for (final v in s.values ?? const <double?>[]) {
-          if (v != null) all.add(v);
+          if (v != null) all.add(v < 0 ? 0 : v);
         }
       }
       if (all.isNotEmpty) {
@@ -266,12 +271,14 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       for (var i = 0; i < vals.length && i < xLen; i++) {
         final v = vals[i];
         if (v != null) {
-          pts.add(FlSpot(i.toDouble(), v));
+          pts.add(FlSpot(i.toDouble(), softCap && v < 0 ? 0 : v));
           hasData = true;
         }
       }
       spots.add(pts);
     }
+    final gridColor = BocchiTheme.inkSoft.withValues(alpha: 0.28);
+    final gridColorFaint = BocchiTheme.inkSoft.withValues(alpha: 0.16);
     return GlassCard(
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -315,40 +322,84 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                         fontSize: 11.5,
                         color: BocchiTheme.inkSoft)),
               ),
-            SizedBox(
-              height: 180,
-              child: !hasData
-                  ?  Center(
-                      child: Text('暂无数据',
-                          style:
-                              TextStyle(color: BocchiTheme.inkSoft)))
-                  : LineChart(
-                      LineChartData(
-                        minY: softCap ? 0 : null,
-                        maxY: softMaxY,
-                        clipData: const FlClipData.all(),
-                        titlesData: const FlTitlesData(show: false),
-                        gridData: const FlGridData(show: true),
-                        borderData: FlBorderData(show: false),
-                        lineBarsData: [
-                          for (var i = 0; i < series.length; i++)
-                            LineChartBarData(
-                              spots: spots[i],
-                              isCurved: true,
-                              color: series[i].color,
-                              barWidth: 2,
-                              dotData:
-                                  const FlDotData(show: false),
-                              belowBarData: BarAreaData(
-                                show: true,
-                                color: series[i]
-                                    .color
-                                    .withValues(alpha: 0.15),
+            // 图区给一层淡淡的底色 + 看得见的网格和左侧 Y 刻度：
+            // 原先图区是卡片本色、网格淡到几乎看不见，整张图显得空
+            Container(
+              decoration: BoxDecoration(
+                color: BocchiTheme.pinkLight.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.fromLTRB(4, 10, 10, 6),
+              child: SizedBox(
+                height: 180,
+                child: !hasData
+                    ?  Center(
+                        child: Text('暂无数据',
+                            style:
+                                TextStyle(color: BocchiTheme.inkSoft)))
+                    : LineChart(
+                        LineChartData(
+                          minY: forceMinY ?? (softCap ? 0 : null),
+                          maxY: forceMaxY ?? softMaxY,
+                          clipData: const FlClipData.all(),
+                          titlesData: FlTitlesData(
+                            show: true,
+                            topTitles: const AxisTitles(
+                                sideTitles:
+                                    SideTitles(showTitles: false)),
+                            rightTitles: const AxisTitles(
+                                sideTitles:
+                                    SideTitles(showTitles: false)),
+                            bottomTitles: const AxisTitles(
+                                sideTitles:
+                                    SideTitles(showTitles: false)),
+                            leftTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                reservedSize: 42,
+                                interval: yInterval,
+                                getTitlesWidget: (v, meta) => Text(
+                                  fmtY(v),
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      color: BocchiTheme.inkSoft),
+                                ),
                               ),
                             ),
-                        ],
+                          ),
+                          gridData: FlGridData(
+                            show: true,
+                            drawVerticalLine: true,
+                            getDrawingHorizontalLine: (_) => FlLine(
+                                color: gridColor, strokeWidth: 1),
+                            getDrawingVerticalLine: (_) => FlLine(
+                                color: gridColorFaint, strokeWidth: 1),
+                          ),
+                          borderData: FlBorderData(
+                            show: true,
+                            border: Border.all(
+                                color: gridColorFaint, width: 1),
+                          ),
+                          lineBarsData: [
+                            for (var i = 0; i < series.length; i++)
+                              LineChartBarData(
+                                spots: spots[i],
+                                isCurved: true,
+                                color: series[i].color,
+                                barWidth: 2,
+                                dotData:
+                                    const FlDotData(show: false),
+                                belowBarData: BarAreaData(
+                                  show: true,
+                                  color: series[i]
+                                      .color
+                                      .withValues(alpha: 0.15),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
+              ),
             ),
           ],
         ),
@@ -477,7 +528,13 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
               ),
             ),
             const SizedBox(height: 12),
-            SizedBox(
+            Container(
+              decoration: BoxDecoration(
+                color: BocchiTheme.pinkLight.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.fromLTRB(4, 10, 10, 2),
+              child: SizedBox(
               height: 170,
               child: !hasData
                   ?  Center(
@@ -534,7 +591,14 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                             ),
                           ),
                         ),
-                        gridData: const FlGridData(show: true),
+                        gridData: FlGridData(
+                          show: true,
+                          drawVerticalLine: false,
+                          getDrawingHorizontalLine: (_) => FlLine(
+                              color: BocchiTheme.inkSoft
+                                  .withValues(alpha: 0.28),
+                              strokeWidth: 1),
+                        ),
                         borderData:
                             FlBorderData(show: false),
                         barGroups: [
@@ -562,6 +626,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                         ],
                       ),
                     ),
+              ),
             ),
             const SizedBox(height: 8),
             Center(
@@ -606,51 +671,194 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
   Widget _emptyHint(String s) => Text(s,
       style: TextStyle(fontSize: 12.5, color: BocchiTheme.inkSoft));
 
-  /// IP 质量行（/api/nodes 已带 ip_* 字段）
-  Widget _ipCard(ProbeNode n) {
-    final has = n.ipCountry != null || n.ipIsp != null;
+  /// 状态概览：一张卡里收四行稀疏信息（IP 质量 / 流量超额预测 /
+  /// 在线状态 / 硬盘写满预测），原来每样各占一张全宽大卡、每张只有
+  /// 一两行字，留白巨大
+  Widget _overviewCard(ProbeNode n) {
+    final hasIp = n.ipCountry != null || n.ipIsp != null;
+    // 流量超额预测文案
+    final String fcBody;
+    if (n.quotaGb <= 0) {
+      fcBody = '未设置流量配额';
+    } else if (n.quotaForecastDays == null) {
+      fcBody = '按当前日均用量，本月不会超额';
+    } else if (n.quotaForecastDays == 0) {
+      fcBody = '本月流量已达到配额';
+    } else {
+      fcBody =
+          '按当前日均用量，预计 ${n.quotaForecastDays} 天后超额（${n.quotaForecastDate ?? ''}）';
+    }
+    // 在线状态 7 天时间条
+    final u = _uptime;
+    final segs = <({int start, int end, bool online})>[];
+    var offCount = 0;
+    var offSecs = 0;
+    if (u != null) {
+      final since = (u['since'] as num?)?.toInt() ?? 0;
+      final now = (u['now'] as num?)?.toInt() ?? 0;
+      final events =
+          ((u['events'] as List?) ?? []).cast<Map<String, dynamic>>();
+      var cursor = since;
+      var cur = events.isEmpty
+          ? (u['online'] == true)
+          : (events.first['event'] != 'online');
+      for (final e in events) {
+        final ts = (e['ts'] as num?)?.toInt() ?? 0;
+        if (ts > cursor) {
+          segs.add((start: cursor, end: ts, online: cur));
+        }
+        if (e['event'] == 'offline') offCount++;
+        cur = e['event'] == 'online';
+        cursor = ts;
+      }
+      if (now > cursor) {
+        segs.add((start: cursor, end: now, online: cur));
+      }
+      for (final s in segs) {
+        if (!s.online) offSecs += s.end - s.start;
+      }
+    }
+    final offH = (offSecs / 3600).toStringAsFixed(1);
+    // 硬盘写满预测文案
+    final d = _diskFc;
+    final String diskBody;
+    if (d == null) {
+      diskBody = '暂无数据';
+    } else if (d['slope_per_day'] == null) {
+      final latest = d['latest'];
+      diskBody =
+          '${d['note'] ?? '数据不足，无法预测'}（当前 ${latest == null ? '--' : '$latest%'}）';
+    } else {
+      final days = d['days_left'] as num?;
+      diskBody = days == null
+          ? '当前 ${d['latest']}% · 每天约 +${d['slope_per_day']}% · 暂无写满风险'
+          : '当前 ${d['latest']}% · 每天约 +${d['slope_per_day']}% · 预计 $days 天后写满';
+    }
     return GlassCard(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionTitle('🌐 IP 质量'),
-            const SizedBox(height: 8),
-            if (!has)
-              _emptyHint('暂无数据 · 服务端每小时检测一次')
-            else ...[
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    '${n.ipCountry ?? ''} ${n.ipIsp ?? ''}'.trim(),
-                    style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: BocchiTheme.ink),
-                  ),
-                  if (n.ipHosting)
-                    _miniBadge('机房', BocchiTheme.warnRed),
-                  if (n.ipProxy)
-                    _miniBadge('代理', BocchiTheme.warnRed),
-                  if (n.ipMobile) _miniBadge('移动', BocchiTheme.okGreen),
-                ],
+            _ovRow(
+              '🌐 IP 质量',
+              hasIp
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          crossAxisAlignment:
+                              WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              '${n.ipCountry ?? ''} ${n.ipIsp ?? ''}'
+                                  .trim(),
+                              style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: BocchiTheme.ink),
+                            ),
+                            if (n.ipHosting)
+                              _miniBadge('机房', BocchiTheme.warnRed),
+                            if (n.ipProxy)
+                              _miniBadge('代理', BocchiTheme.warnRed),
+                            if (n.ipMobile)
+                              _miniBadge('移动', BocchiTheme.okGreen),
+                          ],
+                        ),
+                        if (n.ipAsn != null) ...[
+                          const SizedBox(height: 2),
+                          Text(n.ipAsn!,
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: BocchiTheme.inkSoft)),
+                        ],
+                      ],
+                    )
+                  : _emptyHint('暂无数据 · 服务端每小时检测一次'),
+            ),
+            _ovDivider(),
+            _ovRow(
+              '💰 流量超额预测',
+              Text(
+                '已用 ${_fmtGb(n.quotaUsedGb)} / ${_fmtGb(n.quotaGb)} · $fcBody',
+                style:
+                    TextStyle(fontSize: 13, color: BocchiTheme.ink),
               ),
-              if (n.ipAsn != null) ...[
-                const SizedBox(height: 4),
-                Text(n.ipAsn!,
-                    style: TextStyle(
-                        fontSize: 12.5, color: BocchiTheme.inkSoft)),
-              ],
-            ],
+            ),
+            _ovDivider(),
+            _ovRow(
+              '🟢 在线状态（近7天）',
+              u == null || segs.isEmpty
+                  ? _emptyHint('暂无数据')
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: SizedBox(
+                            height: 16,
+                            child: Row(
+                              children: [
+                                for (final s in segs)
+                                  Flexible(
+                                    flex: (s.end - s.start)
+                                        .clamp(1, 1 << 30),
+                                    child: Container(
+                                      color: s.online
+                                          ? BocchiTheme.okGreen
+                                          : BocchiTheme.warnRed,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '掉线 $offCount 次 · 离线共 $offH 小时',
+                          style: TextStyle(
+                              fontSize: 12.5,
+                              color: BocchiTheme.inkSoft),
+                        ),
+                      ],
+                    ),
+            ),
+            _ovDivider(),
+            _ovRow(
+              '💾 硬盘写满预测',
+              Text(diskBody,
+                  style:
+                      TextStyle(fontSize: 13, color: BocchiTheme.ink)),
+            ),
           ],
         ),
       ),
     );
   }
+
+  /// 概览区的一行：小标题 + 内容
+  Widget _ovRow(String title, Widget content) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: BocchiTheme.ink)),
+          const SizedBox(height: 4),
+          content,
+        ],
+      );
+
+  Widget _ovDivider() => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Divider(
+            height: 1,
+            color: BocchiTheme.inkSoft.withValues(alpha: 0.18)),
+      );
 
   Widget _miniBadge(String s, Color c) => Container(
         padding:
@@ -663,38 +871,6 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             style: TextStyle(
                 fontSize: 11, color: c, fontWeight: FontWeight.w600)),
       );
-
-  /// 流量超额预测（/api/nodes 已带 quota_forecast_* 字段）
-  Widget _forecastCard(ProbeNode n) {
-    final String body;
-    if (n.quotaGb <= 0) {
-      body = '未设置流量配额';
-    } else if (n.quotaForecastDays == null) {
-      body = '按当前日均用量，本月不会超额';
-    } else if (n.quotaForecastDays == 0) {
-      body = '本月流量已达到配额';
-    } else {
-      body =
-          '按当前日均用量，预计 ${n.quotaForecastDays} 天后超额（${n.quotaForecastDate ?? ''}）';
-    }
-    return GlassCard(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionTitle('💰 流量超额预测'),
-            const SizedBox(height: 8),
-            Text(
-              '已用 ${_fmtGb(n.quotaUsedGb)} / ${_fmtGb(n.quotaGb)} · $body',
-              style:
-                  TextStyle(fontSize: 13, color: BocchiTheme.ink),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   /// 三网延迟 24h 三线图（GET /api/netq/<nid>?range=24h）
   Widget _netqCard() {
@@ -786,7 +962,9 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
     );
   }
 
-  /// MTR 逐跳表（GET /api/mtr/<nid>）
+  /// MTR 逐跳（GET /api/mtr/<nid>）：按运营商折叠，默认收起、标题露
+  /// 摘要（跳数 + 末跳延迟）；原来三网几十行全摊开是一堵长墙。
+  /// 丢包列已删：agent 根本没报逐跳丢包，每行一个「丢包 --」毫无意义
   Widget _mtrCard() {
     final targets = _mtr.keys
         .where((k) => _ispNames.containsKey(k))
@@ -798,62 +976,76 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _sectionTitle('🛣 MTR 逐跳'),
-            const SizedBox(height: 8),
             if (targets.isEmpty)
-              _emptyHint('暂无数据 · agent 每 30 分钟跑一次')
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _emptyHint('暂无数据 · agent 每 30 分钟跑一次'),
+              )
             else
-              for (final t in targets) ...[
-                Text(_ispNames[t]!,
-                    style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: BocchiTheme.ink)),
-                const SizedBox(height: 4),
-                for (final hop
-                    in ((_mtr[t] as Map<String, dynamic>?)?['hops']
-                            as List?) ??
-                        [])
-                  _mtrRow(hop as Map<String, dynamic>),
-                const SizedBox(height: 8),
-              ],
+              for (final t in targets) _mtrGroup(t),
           ],
         ),
       ),
     );
   }
 
+  Widget _mtrGroup(String t) {
+    final hops = (((_mtr[t] as Map<String, dynamic>?)?['hops']
+                as List?) ??
+            [])
+        .cast<Map<String, dynamic>>();
+    final last = hops.isEmpty ? null : hops.last['avg'];
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.zero,
+        shape: const Border(),
+        collapsedShape: const Border(),
+        collapsedIconColor: BocchiTheme.inkSoft,
+        iconColor: BocchiTheme.inkSoft,
+        title: Row(
+          children: [
+            Text(_ispNames[t]!,
+                style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: BocchiTheme.ink)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${hops.length} 跳${last == null ? '' : ' · 末跳 ${(last as num).toStringAsFixed(1)} ms'}',
+                style: TextStyle(
+                    fontSize: 12, color: BocchiTheme.inkSoft),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        children: [
+          for (final hop in hops) _mtrRow(hop),
+        ],
+      ),
+    );
+  }
+
   Widget _mtrRow(Map<String, dynamic> hop) {
-    final loss = hop['loss'];
     final avg = hop['avg'];
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
       child: Row(
         children: [
           SizedBox(
-            width: 28,
+            width: 26,
             child: Text('${hop['n'] ?? ''}',
                 style: TextStyle(
-                    fontSize: 12.5, color: BocchiTheme.inkSoft)),
+                    fontSize: 12, color: BocchiTheme.inkSoft)),
           ),
           Expanded(
             child: Text('${hop['host'] ?? ''}',
                 style:
-                    TextStyle(fontSize: 12.5, color: BocchiTheme.ink),
+                    TextStyle(fontSize: 12, color: BocchiTheme.ink),
                 overflow: TextOverflow.ellipsis),
-          ),
-          SizedBox(
-            width: 56,
-            child: Text(
-              loss == null
-                  ? '丢包 --'
-                  : '丢包 ${(loss as num).toStringAsFixed(0)}%',
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                  fontSize: 12,
-                  color: (loss is num && loss > 0)
-                      ? BocchiTheme.warnRed
-                      : BocchiTheme.inkSoft),
-            ),
           ),
           SizedBox(
             width: 64,
@@ -863,118 +1055,10 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                   : '${(avg as num).toStringAsFixed(1)} ms',
               textAlign: TextAlign.right,
               style: TextStyle(
-                  fontSize: 12.5, color: BocchiTheme.ink),
+                  fontSize: 12, color: BocchiTheme.ink),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  /// 在线状态 7 天时间条（GET /api/uptime/<nid>）
-  Widget _uptimeCard() {
-    final u = _uptime;
-    final segs = <({int start, int end, bool online})>[];
-    var offCount = 0;
-    var offSecs = 0;
-    if (u != null) {
-      final since = (u['since'] as num?)?.toInt() ?? 0;
-      final now = (u['now'] as num?)?.toInt() ?? 0;
-      final events =
-          ((u['events'] as List?) ?? []).cast<Map<String, dynamic>>();
-      var cursor = since;
-      var cur = events.isEmpty
-          ? (u['online'] == true)
-          : (events.first['event'] != 'online');
-      for (final e in events) {
-        final ts = (e['ts'] as num?)?.toInt() ?? 0;
-        if (ts > cursor) {
-          segs.add((start: cursor, end: ts, online: cur));
-        }
-        if (e['event'] == 'offline') offCount++;
-        cur = e['event'] == 'online';
-        cursor = ts;
-      }
-      if (now > cursor) {
-        segs.add((start: cursor, end: now, online: cur));
-      }
-      for (final s in segs) {
-        if (!s.online) offSecs += s.end - s.start;
-      }
-    }
-    final offH = (offSecs / 3600).toStringAsFixed(1);
-    return GlassCard(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionTitle('🟢 在线状态（近7天）'),
-            const SizedBox(height: 10),
-            if (u == null || segs.isEmpty)
-              _emptyHint('暂无数据')
-            else ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: SizedBox(
-                  height: 18,
-                  child: Row(
-                    children: [
-                      for (final s in segs)
-                        Flexible(
-                          flex: (s.end - s.start).clamp(1, 1 << 30),
-                          child: Container(
-                            color: s.online
-                                ? BocchiTheme.okGreen
-                                : BocchiTheme.warnRed,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '掉线 $offCount 次 · 离线共 $offH 小时',
-                style: TextStyle(
-                    fontSize: 12.5, color: BocchiTheme.inkSoft),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 硬盘写满预测（GET /api/disk-forecast/<nid>）
-  Widget _diskCard() {
-    final d = _diskFc;
-    final String body;
-    if (d == null) {
-      body = '暂无数据';
-    } else if (d['slope_per_day'] == null) {
-      final latest = d['latest'];
-      body =
-          '${d['note'] ?? '数据不足，无法预测'}（当前 ${latest == null ? '--' : '$latest%'}）';
-    } else {
-      final days = d['days_left'] as num?;
-      body = days == null
-          ? '当前 ${d['latest']}% · 每天约 +${d['slope_per_day']}% · 暂无写满风险'
-          : '当前 ${d['latest']}% · 每天约 +${d['slope_per_day']}% · 预计 $days 天后写满';
-    }
-    return GlassCard(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionTitle('💾 硬盘写满预测'),
-            const SizedBox(height: 8),
-            Text(body,
-                style:
-                    TextStyle(fontSize: 13, color: BocchiTheme.ink)),
-          ],
-        ),
       ),
     );
   }

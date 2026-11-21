@@ -19,12 +19,16 @@ class PhoneNodeCard extends StatelessWidget {
   final VoidCallback? onChanged;
   final VoidCallback? onTap;
   final ProbesStyle probesStyle;
+  /// 紧凑模式（仅详情页用）：内边距和间距收紧，卡别又高又空；
+  /// 列表页默认 false，样子一字不动
+  final bool compact;
   const PhoneNodeCard(
       {super.key,
       required this.node,
       this.onChanged,
       this.onTap,
-      this.probesStyle = ProbesStyle.standard});
+      this.probesStyle = ProbesStyle.standard,
+      this.compact = false});
 
   static String mb(int b) =>
       b <= 0 ? '--' : '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
@@ -65,7 +69,7 @@ class PhoneNodeCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(
           horizontal: 10, vertical: 6),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(compact ? 10 : 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -123,7 +127,7 @@ class PhoneNodeCard extends StatelessWidget {
                   fontSize: 12,
                   color: BocchiTheme.inkSoft),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: compact ? 6 : 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -142,7 +146,7 @@ class PhoneNodeCard extends StatelessWidget {
                       dim: true),
               ],
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: compact ? 8 : 12),
             Row(
               children: [
                 Expanded(
@@ -169,7 +173,7 @@ class PhoneNodeCard extends StatelessWidget {
                             '${mb(usedBytes(n.mem, n.memTotal).toInt())} / ${mb(n.memTotal)}')),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: compact ? 6 : 8),
             Row(
               children: [
                 Expanded(
@@ -198,7 +202,7 @@ class PhoneNodeCard extends StatelessWidget {
                             : '未设配额')),
               ],
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: compact ? 6 : 10),
             Row(
               children: [
                 Expanded(
