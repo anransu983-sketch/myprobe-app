@@ -80,6 +80,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
   bool _loading = true;
   // v6.7：三网 / MTR / 解锁 / 在线时间线 / 硬盘预测
   Map<String, dynamic> _netq = {};
+  String _netqRange = '24h'; // v1.17.3：三网图 24h/7d 切换
   Map<String, dynamic> _mtr = {};
   List<Map<String, dynamic>> _unlock = [];
   Map<String, dynamic>? _uptime;
@@ -92,6 +93,16 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
   }
 
   void refresh() => _fetch();
+
+  /// 只重拉三网数据（切 24h/7d 时不用整页重拉）
+  Future<void> _fetchNetq() async {
+    try {
+      final netq = await AppState.instance.client
+          .getNetq(widget.nodeId, range: _netqRange);
+      if (!mounted) return;
+      setState(() => _netq = netq);
+    } catch (_) {}
+  }
 
   Future<void> _fetch() async {
     if (mounted) setState(() => _loading = true);
@@ -109,7 +120,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       List<Map<String, dynamic>> unlock = [];
       Map<String, dynamic>? uptime, diskFc;
       try {
-        netq = await c.getNetq(widget.nodeId);
+        netq = await c.getNetq(widget.nodeId, range: _netqRange);
       } catch (_) {}
       try {
         mtr = await c.getMtr(widget.nodeId);
@@ -161,7 +172,11 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           PhoneNodeCard(
-              node: n, onChanged: _fetch, compact: true, probesStyle: ProbesStyle.slim),
+              node: n,
+              onChanged: _fetch,
+              compact: true,
+              probesStyle: ProbesStyle.slim,
+              netq: _netq),
           // 图表范围选择器紧贴图表上方（原在页底、流量卡之下，控制关系反了）；
           // 流量卡自带的今日/本周开关在流量卡内，两者作用域从此分开
           _rangeCard(),
@@ -237,6 +252,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       String Function(double) fmtY,
       {bool softCap = false,
       String? subtitle,
+      Widget? topExtra,
       int? xCount,
       double? forceMinY,
       double? forceMaxY,
@@ -322,6 +338,10 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                         fontSize: 11.5,
                         color: BocchiTheme.inkSoft)),
               ),
+            if (topExtra != null) ...[
+              topExtra,
+              const SizedBox(height: 8),
+            ],
             // 图区给一层淡淡的底色 + 看得见的网格和左侧 Y 刻度：
             // 原先图区是卡片本色、网格淡到几乎看不见，整张图显得空
             Container(
@@ -527,6 +547,14 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                 ],
               ),
             ),
+            // 流量单价（v1.17.3）：价格或配额缺失时不显示这一行
+            if (_node != null && pricePerTb(_node!) != null) ...[
+              const SizedBox(height: 4),
+              Text('流量单价 ${pricePerTb(_node!)}',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: BocchiTheme.inkSoft)),
+            ],
             const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(
@@ -872,7 +900,8 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                 fontSize: 11, color: c, fontWeight: FontWeight.w600)),
       );
 
-  /// 三网延迟 24h 三线图（GET /api/netq/<nid>?range=24h）
+  /// 三网延迟三线图（GET /api/netq/<nid>?range=24h|7d，v1.17.3 加 7d 档；
+  /// 30d 服务端有接口但数据从 v6.7 才开始攒，详情页先不给）
   Widget _netqCard() {
     final series = <_Series>[];
     final lts = <String>[];
@@ -899,9 +928,32 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       final l = s.values?.length ?? 0;
       if (l > xLen) xLen = l;
     }
-    return _chartCard('📶 三网延迟（24h）', series,
+    return _chartCard('📶 三网延迟（${_netqRange == '7d' ? '7天' : '24小时'}）', series,
         (v) => '${v.toStringAsFixed(0)}ms',
         xCount: xLen,
+        topExtra: Row(
+          children: [
+            for (final r in ['24h', '7d'])
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(r == '24h' ? '24小时' : '7天',
+                      style: const TextStyle(fontSize: 12)),
+                  selected: _netqRange == r,
+                  selectedColor: BocchiTheme.pinkDeep,
+                  labelStyle: TextStyle(
+                      color: _netqRange == r
+                          ? Colors.white
+                          : BocchiTheme.ink),
+                  onSelected: (_) {
+                    if (_netqRange == r) return;
+                    setState(() => _netqRange = r);
+                    _fetchNetq();
+                  },
+                ),
+              ),
+          ],
+        ),
         subtitle: lts.isEmpty
             ? '暂无数据 · agent 每 5 分钟采集一次'
             : '最新：${lts.join(' · ')}（晚高峰 20:00–23:00）');

@@ -40,6 +40,7 @@ class ProbeNode {
   final bool ipHosting;
   final bool ipMobile;
   final int lastSeen;
+  final bool hasIpv6; // v6.8：节点是否有全局 IPv6 出口（agent 上报）
   final String? sshHost;
   final int? sshPort;
   final String? sshUser;
@@ -85,6 +86,7 @@ class ProbeNode {
     this.ipHosting = false,
     this.ipMobile = false,
     this.lastSeen = 0,
+    this.hasIpv6 = false,
     this.sshHost,
     this.sshPort,
     this.sshUser,
@@ -136,6 +138,7 @@ class ProbeNode {
         ipHosting: j['ip_hosting'] == true,
         ipMobile: j['ip_mobile'] == true,
         lastSeen: _i(j['last_seen']) ?? 0,
+        hasIpv6: j['has_ipv6'] == true,
         sshHost: j['ssh_host']?.toString(),
         sshPort: _i(j['ssh_port']),
         sshUser: j['ssh_user']?.toString(),
@@ -301,4 +304,79 @@ String fmtUptime(int? s) {
   if (d > 0) return '$d 天 $h 小时';
   if (h > 0) return '$h 小时 $m 分';
   return '$m 分钟';
+}
+
+/// 流量单价：月均价 ÷ 月配额（年付先折到每月）。价格或配额缺失时返回 null，
+/// 调用方不显示这一行（不显示 0，不造假）。
+String? pricePerTb(ProbeNode n) {
+  final price = n.price;
+  final quota = n.quotaGb;
+  if (price == null || price <= 0 || quota <= 0) return null;
+  final monthly = n.billCycle == 'yearly' ? price / 12 : price;
+  final perTb = monthly / (quota / 1024);
+  final cur = n.currency ?? '¥';
+  return '$cur${perTb.toStringAsFixed(2)}/TB';
+}
+
+/// 上次上报距今：优先节点 last_seen（秒），缺失时用本次拉取时间兜底
+/// （即「刚刚更新」）。
+String updatedAgoText(ProbeNode n) {
+  if (n.lastSeen <= 0) return '刚刚更新';
+  final diff =
+      DateTime.now().millisecondsSinceEpoch ~/ 1000 - n.lastSeen;
+  if (diff < 5) return '刚刚更新';
+  if (diff < 60) return '$diff 秒前更新';
+  if (diff < 3600) return '${diff ~/ 60} 分钟前更新';
+  return '${diff ~/ 3600} 小时前更新';
+}
+
+/// ip-api.com 的国家名 → 旗标 emoji；没映射到的不显示（不瞎猜）。
+String? countryFlag(String? country) {
+  const m = {
+    'United States': '🇺🇸',
+    'Hong Kong': '🇭🇰',
+    'United Kingdom': '🇬🇧',
+    'Singapore': '🇸🇬',
+    'Germany': '🇩🇪',
+    'Japan': '🇯🇵',
+    'China': '🇨🇳',
+    'South Korea': '🇰🇷',
+    'Taiwan': '🇹🇼',
+    'Canada': '🇨🇦',
+    'Australia': '🇦🇺',
+    'Netherlands': '🇳🇱',
+    'France': '🇫🇷',
+    'Russia': '🇷🇺',
+    'India': '🇮🇳',
+    'Brazil': '🇧🇷',
+    'Turkey': '🇹🇷',
+    'Vietnam': '🇻🇳',
+    'Thailand': '🇹🇭',
+    'Malaysia': '🇲🇾',
+    'Indonesia': '🇮🇩',
+    'Philippines': '🇵🇭',
+    'Italy': '🇮🇹',
+    'Spain': '🇪🇸',
+    'Sweden': '🇸🇪',
+    'Norway': '🇳🇴',
+    'Finland': '🇫🇮',
+    'Ireland': '🇮🇪',
+    'Switzerland': '🇨🇭',
+    'Austria': '🇦🇹',
+    'Poland': '🇵🇱',
+    'Ukraine': '🇺🇦',
+    'South Africa': '🇿🇦',
+    'Mexico': '🇲🇽',
+    'New Zealand': '🇳🇿',
+  };
+  if (country == null) return null;
+  return m[country.trim()];
+}
+
+/// 延迟分段色（养鸡场式 24 格条用）：<100 绿、100–200 黄、>200 红、无数据灰
+int latencyCellColor(double? lat) {
+  if (lat == null) return 0xFFB0B0B0; // 灰
+  if (lat < 100) return 0xFF43A047; // 绿
+  if (lat < 200) return 0xFFFFB300; // 黄
+  return 0xFFE53935; // 红
 }

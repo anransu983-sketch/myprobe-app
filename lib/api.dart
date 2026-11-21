@@ -125,10 +125,28 @@ class MyProbeClient {
   // ---------- v6.7：节点详情新数据（公开只读） ----------
 
   /// 三网延迟：{telecom/unicom/mobile: {ts(ms), lat, loss, latest}}
-  Future<Map<String, dynamic>> getNetq(String nid) async {
-    final j = await _get('/api/netq/$nid', {'range': '24h'})
+  /// range：24h / 7d / 30d（服务端 RANGES 全支持；30d 有多少数据是
+  /// 多少，调用方按返回 ts 跨度判断是否够用）
+  Future<Map<String, dynamic>> getNetq(String nid,
+      {String range = '24h'}) async {
+    final j = await _get('/api/netq/$nid', {'range': range})
         as Map<String, dynamic>;
     return (j['netq'] as Map?)?.cast<String, dynamic>() ?? {};
+  }
+
+  /// v6.8 内置拨测目标库：[{province, carrier, family, type, host,
+  /// port, name, source}]。v6.7 服务端没有这个接口（404/HTML），
+  /// 失败一律返回空列表，调用方退回手动输入（不崩）。
+  Future<List<Map<String, dynamic>>> probeLibrary() async {
+    try {
+      final j = await _get('/api/admin/probe-library')
+          as Map<String, dynamic>;
+      return (j['library'] as List?)
+              ?.cast<Map<String, dynamic>>() ??
+          [];
+    } catch (_) {
+      return [];
+    }
   }
 
   /// MTR 逐跳：{target: {ts, hops: [{n, host, loss, avg}], signature}}

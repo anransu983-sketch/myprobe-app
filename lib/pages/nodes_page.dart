@@ -6,6 +6,7 @@ import '../theme.dart';
 import '../widgets/widgets.dart';
 import '../widgets/node_card.dart';
 import 'node_detail_page.dart';
+import 'compare_page.dart';
 import 'node_admin.dart';
 
 /// 节点 Tab：顶部 pills（全部/各节点）+ 横滑分页；
@@ -96,6 +97,14 @@ class _NodesPageState extends State<NodesPage> {
               '🎸 探针${_nodes.isEmpty ? '' : '  $online/${_nodes.length} 在线'}',
           fontSize: 18,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.compare_arrows),
+              tooltip: '节点对比',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const ComparePage()),
+              ),
+            ),
             IconButton(
               icon: Icon(AppState.instance.hideIp
                   ? Icons.visibility_off
@@ -318,6 +327,7 @@ class _NodeRow extends StatelessWidget {
         (n.daysLeft! < 0 ? '已过期' : '余期${n.daysLeft}天'),
       if (n.quotaGb > 0)
         '流量 ${(n.quotaUsedGb > 0 ? n.quotaUsedGb : n.monthRxGb + n.monthTxGb).toStringAsFixed(1)}/${n.quotaGb.toStringAsFixed(0)}GB',
+      updatedAgoText(n),
     ].join(' · ');
     final content = Padding(
       padding:
@@ -344,7 +354,7 @@ class _NodeRow extends StatelessWidget {
                     const SizedBox(width: 7),
                     Expanded(
                       child: Text(
-                        n.name.isEmpty ? n.id : n.name,
+                        '${countryFlag(n.ipCountry) ?? ''}${countryFlag(n.ipCountry) == null ? '' : ' '}${n.name.isEmpty ? n.id : n.name}',
                         style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,

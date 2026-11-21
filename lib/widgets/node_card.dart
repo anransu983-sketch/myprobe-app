@@ -99,13 +99,16 @@ class PhoneNodeCard extends StatelessWidget {
   /// 紧凑模式（仅详情页用）：内边距和间距收紧，卡别又高又空；
   /// 列表页默认 false，样子一字不动
   final bool compact;
+  /// 三网 24h 采样（详情页传，养鸡场式 24 格分段条用；不传就不画）
+  final Map<String, dynamic>? netq;
   const PhoneNodeCard(
       {super.key,
       required this.node,
       this.onChanged,
       this.onTap,
       this.probesStyle = ProbesStyle.standard,
-      this.compact = false});
+      this.compact = false,
+      this.netq});
 
   static String mb(int b) =>
       b <= 0 ? '--' : '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
@@ -157,7 +160,7 @@ class PhoneNodeCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    n.name.isEmpty ? n.id : n.name,
+                    '${countryFlag(n.ipCountry) ?? ''}${countryFlag(n.ipCountry) == null ? '' : ' '}${n.name.isEmpty ? n.id : n.name}',
                     style:  TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -199,7 +202,7 @@ class PhoneNodeCard extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              '${n.hostname} · ${AppState.instance.showIp(n.ip)}',
+              '${n.hostname} · ${AppState.instance.showIp(n.ip)} · ${updatedAgoText(n)}',
               style:  TextStyle(
                   fontSize: 12,
                   color: BocchiTheme.inkSoft),
@@ -275,7 +278,7 @@ class PhoneNodeCard extends StatelessWidget {
                             ? '${n.quotaPct.toStringAsFixed(1)}%'
                             : '—',
                         caption: n.quotaGb > 0
-                            ? '${(n.quotaUsedGb > 0 ? n.quotaUsedGb : n.monthRxGb + n.monthTxGb).toStringAsFixed(1)} GB / ${n.quotaGb.toStringAsFixed(0)} GB'
+                            ? '${(n.quotaUsedGb > 0 ? n.quotaUsedGb : n.monthRxGb + n.monthTxGb).toStringAsFixed(1)} GB / ${n.quotaGb.toStringAsFixed(0)} GB${pricePerTb(n) == null ? '' : ' · ${pricePerTb(n)}'}'
                             : '未设配额')),
               ],
             ),
@@ -310,7 +313,8 @@ class PhoneNodeCard extends StatelessWidget {
                             : '状态 / IP')),
               ],
             ),
-            _RegionProbes(node: n, style: probesStyle),
+            _RegionProbes(node: n, style: probesStyle, netq: netq),
+            _TagRow(node: n),
           ],
         ),
       ),
@@ -333,12 +337,56 @@ class PhoneNodeCard extends StatelessWidget {
   }
 }
 
+/// 节点自定义标签行（养鸡场式 pill，卡底）：标签存本机（见
+/// AppState.nodeTags），没标签时不占地方
+class _TagRow extends StatelessWidget {
+  final ProbeNode node;
+  const _TagRow({required this.node});
+  @override
+  Widget build(BuildContext context) {
+    final tags = AppState.instance.nodeTags(node.id);
+    if (tags.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            for (final t in tags)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: BocchiTheme.inkSoft
+                          .withValues(alpha: 0.45)),
+                ),
+                child: Text(t,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: BocchiTheme.inkSoft)),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 /// 手机版探测目标：地区 chips + 运营商行（名字/延迟/丢包 + 细粉条），无网页表头
 class _RegionProbes extends StatefulWidget {
   final ProbeNode node;
   final ProbesStyle style;
+  /// 三网 24h 采样（详情页传）：每格下面画养鸡场式 24 格分段条
+  final Map<String, dynamic>? netq;
   const _RegionProbes(
-      {required this.node, this.style = ProbesStyle.standard});
+      {required this.node,
+      this.style = ProbesStyle.standard,
+      this.netq});
   @override
   State<_RegionProbes> createState() =>
       _RegionProbesState();
@@ -480,9 +528,50 @@ class _RegionProbesState extends State<_RegionProbes> {
               latencies: p.histLat,
               oks: p.bars,
               height: 5),
+          // 养鸡场式 24 格分段条：netq 24h 采样按本地小时聚合，
+          // 每格一小时，绿/黄/红按延迟，没数据的格子灰色
+          if (widget.netq != null) ...[
+            const SizedBox(height: 5),
+            _HourStrip(hours: _hourlyLat(p)),
+          ],
         ],
       ),
     );
+  }
+
+  /// 该运营商 24h 采样按小时聚合（本地时区），返回 24 格平均延迟
+  /// （null = 该小时无采样）。netq 的 ts 是毫秒。
+  List<double?> _hourlyLat(NodeProbe p) {
+    final out = List<double?>.filled(24, null);
+    final key = p.name.endsWith('电信')
+        ? 'telecom'
+        : p.name.endsWith('联通')
+            ? 'unicom'
+            : p.name.endsWith('移动')
+                ? 'mobile'
+                : null;
+    if (key == null) return out;
+    final d = widget.netq![key] as Map<String, dynamic>?;
+    if (d == null) return out;
+    final ts = ((d['ts'] as List?) ?? [])
+        .map((e) => (e as num?)?.toInt() ?? 0)
+        .toList();
+    final lats = ((d['lat'] as List?) ?? [])
+        .map((e) => e == null ? null : (e as num).toDouble())
+        .toList();
+    final sums = List<double>.filled(24, 0);
+    final cnts = List<int>.filled(24, 0);
+    for (var i = 0; i < ts.length && i < lats.length; i++) {
+      final v = lats[i];
+      if (v == null) continue;
+      final h = DateTime.fromMillisecondsSinceEpoch(ts[i]).hour;
+      sums[h] += v;
+      cnts[h]++;
+    }
+    for (var h = 0; h < 24; h++) {
+      if (cnts[h] > 0) out[h] = sums[h] / cnts[h];
+    }
+    return out;
   }
 
   /// 省份选择：底部弹窗网格
@@ -582,6 +671,36 @@ class _RegionProbesState extends State<_RegionProbes> {
       // 记住选择：重启/重进页面后恢复，不再跳回默认浙江
       await AppState.instance.setProbeRegion(sel);
     }
+  }
+}
+
+/// 养鸡场式 24 格分段条：24 小时每小时一格，颜色按该小时平均延迟
+/// （绿 <100ms、黄 100–200ms、红 >200ms、无数据灰），见 models.latencyCellColor
+class _HourStrip extends StatelessWidget {
+  final List<double?> hours;
+  const _HourStrip({required this.hours});
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 6,
+      child: Row(
+        children: [
+          for (var i = 0; i < 24; i++)
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: i == 23 ? 0 : 1.5),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Color(latencyCellColor(
+                        i < hours.length ? hours[i] : null)),
+                    borderRadius: BorderRadius.circular(1.5),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 

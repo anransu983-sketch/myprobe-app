@@ -19,6 +19,33 @@ class AppState extends ChangeNotifier {
   /// 探测目标上次选的省份（全局一个，持久化；null = 从未选过，用默认）
   String? probeRegion;
 
+  /// 节点自定义标签（养鸡场式 pill，如「三网4837」）：服务端节点表
+  /// 没有 tags 字段，存在本机 SharedPreferences（key mp_node_tags_<id>，
+  /// 逗号分隔），管理页可编辑；换手机不跟随。
+  final Map<String, List<String>> _nodeTags = {};
+
+  List<String> nodeTags(String id) =>
+      List.unmodifiable(_nodeTags[id] ?? const []);
+
+  Future<void> setNodeTags(String id, List<String> tags) async {
+    final clean = tags
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (clean.isEmpty) {
+      _nodeTags.remove(id);
+    } else {
+      _nodeTags[id] = clean;
+    }
+    final p = await SharedPreferences.getInstance();
+    if (clean.isEmpty) {
+      await p.remove('mp_node_tags_$id');
+    } else {
+      await p.setString('mp_node_tags_$id', clean.join(','));
+    }
+    notifyListeners();
+  }
+
   /// 当前界面主题 id（持久化；默认 bocchi 波奇酱）
   String themeId = AppThemeDef.bocchi.id;
   AppThemeDef get themeDef => AppThemeDef.byId(themeId);
@@ -36,6 +63,17 @@ class AppState extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     hideIp = p.getBool('mp_hide_ip') ?? false;
     probeRegion = p.getString('mp_probe_region');
+    for (final k in p
+        .getKeys()
+        .where((k) => k.startsWith('mp_node_tags_'))) {
+      final id = k.substring('mp_node_tags_'.length);
+      final tags = (p.getString(k) ?? '')
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (tags.isNotEmpty) _nodeTags[id] = tags;
+    }
     themeId = p.getString('mp_theme_id') ?? AppThemeDef.bocchi.id;
     rainMode = p.getInt('mp_rain_mode') ?? 1;
     perfMode = p.getBool('mp_perf_mode') ?? false;

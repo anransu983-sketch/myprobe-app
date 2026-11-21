@@ -37,6 +37,13 @@ class NodeAdmin {
                   metaDialog(context, n, onChanged);
                 }),
             ListTile(
+                leading: const Icon(Icons.label_outline),
+                title: const Text('标签（节点卡底部显示）'),
+                onTap: () {
+                  Navigator.pop(context);
+                  tagsDialog(context, n, onChanged);
+                }),
+            ListTile(
                 leading: const Icon(Icons.delete_outline,
                     color: BocchiTheme.warnRed),
                 title: const Text('删除节点',
@@ -85,6 +92,38 @@ class NodeAdmin {
       } catch (e) {
         showErr(context, e);
       }
+    }
+  }
+
+  /// 自定义标签（养鸡场式 pill）：存本机，不跟服务端同步
+  static Future<void> tagsDialog(BuildContext context,
+      ProbeNode n, VoidCallback onChanged) async {
+    final tags = AppState.instance.nodeTags(n.id);
+    final c = TextEditingController(text: tags.join(','));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('节点标签'),
+        content: TextField(
+            controller: c,
+            decoration: const InputDecoration(
+                labelText: '多个标签用逗号隔开',
+                hintText: '如 三网4837,v6移动快乐鸡')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('保存')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await AppState.instance.setNodeTags(
+          n.id, c.text.split(','));
+      showOk(context, '已保存');
+      onChanged();
     }
   }
 

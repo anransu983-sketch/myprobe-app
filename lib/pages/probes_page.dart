@@ -118,61 +118,182 @@ class _ProbesPageState extends State<ProbesPage> {
     );
   }
 
+  /// 添加拨测任务：v6.8+ 可从内置目标库点选（省/运营商/v6），并选
+  /// 下发节点；v6.7 服务端没有库接口时只留手动输入（不崩）。
   Future<void> _addDialog() async {
     final name = TextEditingController();
     final host = TextEditingController();
     final port = TextEditingController(text: '80');
     String type = 'tcp';
+    // 目标库与节点列表先拉好再弹框（失败就空着走手动路线）
+    List<Map<String, dynamic>> lib = [];
+    List<ProbeNode> nodes = [];
+    try {
+      lib = await AppState.instance.client.probeLibrary();
+    } catch (_) {}
+    try {
+      nodes = await AppState.instance.client.getNodes();
+    } catch (_) {}
+    final provinces = <String>[];
+    for (final e in lib) {
+      final p = '${e['province'] ?? ''}';
+      if (p.isNotEmpty && !provinces.contains(p)) provinces.add(p);
+    }
+    String? libProvince = provinces.contains('全国')
+        ? '全国'
+        : (provinces.isEmpty ? null : provinces.first);
+    Map<String, dynamic>? libEntry;
+    String nodeSel = ''; // '' = 全部节点
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => AlertDialog(
-          title: const Text('添加拨测任务'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                    controller: name,
-                    decoration: const InputDecoration(
-                        labelText: '名称，如 浙江移动')),
-                DropdownButtonFormField<String>(
-                  initialValue: type,
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'tcp', child: Text('TCP')),
-                    DropdownMenuItem(
-                        value: 'ping', child: Text('Ping')),
-                    DropdownMenuItem(
-                        value: 'http', child: Text('HTTP')),
-                  ],
-                  onChanged: (v) =>
-                      setS(() => type = v ?? 'tcp'),
-                  decoration:
-                      const InputDecoration(labelText: '类型'),
-                ),
-                TextField(
-                    controller: host,
-                    decoration: const InputDecoration(
-                        labelText: '目标（IP/域名，http 可填完整 URL）')),
-                if (type == 'tcp')
-                  TextField(
-                      controller: port,
-                      keyboardType: TextInputType.number,
+        builder: (ctx, setS) {
+          final entries = lib
+              .where((e) => '${e['province'] ?? ''}' == libProvince)
+              .toList();
+          final entry = libEntry;
+          final isV6Entry =
+              entry != null && '${entry['family'] ?? ''}' == 'v6';
+          // v6 条目只下发给有 IPv6 的节点；v4 条目可全发或指定节点
+          final v6Nodes =
+              nodes.where((n) => n.hasIpv6).toList();
+          final nodeOptions = isV6Entry ? v6Nodes : nodes;
+          // 唯一加不了的情况：选了 v6 条目、但一台有 v6 的节点都没有
+          final canAdd = !(isV6Entry && v6Nodes.isEmpty);
+          return AlertDialog(
+            title: const Text('添加拨测任务'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (lib.isNotEmpty) ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: libProvince,
+                      items: [
+                        for (final p in provinces)
+                          DropdownMenuItem(
+                              value: p, child: Text(p)),
+                      ],
+                      onChanged: (v) => setS(() {
+                        libProvince = v;
+                        libEntry = null;
+                      }),
                       decoration: const InputDecoration(
-                          labelText: 'TCP 端口')),
-              ],
+                          labelText: '目标库 · 省份'),
+                    ),
+                    DropdownButtonFormField<Map<String, dynamic>>(
+                      initialValue: libEntry,
+                      hint: const Text('从目标库选择'),
+                      items: [
+                        for (final e in entries)
+                          DropdownMenuItem(
+                            value: e,
+                            child: Text(
+                                '${e['name'] ?? ''} (${e['family'] ?? ''})'),
+                          ),
+                      ],
+                      onChanged: (v) => setS(() {
+                        libEntry = v;
+                        if (v != null) {
+                          name.text = '${v['name'] ?? ''}';
+                          type = '${v['type'] ?? 'ping'}';
+                          host.text = '${v['host'] ?? ''}';
+                          // v6 条目默认发给首台有 v6 的节点，不全发
+                          if ('${v['family'] ?? ''}' == 'v6') {
+                            nodeSel = v6Nodes.isEmpty
+                                ? ''
+                                : v6Nodes.first.id;
+                          } else {
+                            nodeSel = '';
+                          }
+                        }
+                      }),
+                      decoration: const InputDecoration(
+                          labelText: '目标库 · 条目'),
+                    ),
+                    if (isV6Entry && v6Nodes.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text('没有带 IPv6 的节点，无法添加 v6 任务',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: BocchiTheme.warnRed)),
+                      ),
+                    // 节点列表拉不到时不画下拉框（node_id 不传=全发）
+                    if (nodeOptions.isNotEmpty)
+                      DropdownButtonFormField<String>(
+                        initialValue: nodeOptions
+                                .any((n) => n.id == nodeSel)
+                            ? nodeSel
+                            : (isV6Entry ? nodeOptions.first.id : ''),
+                        items: [
+                          if (!isV6Entry)
+                            const DropdownMenuItem(
+                                value: '', child: Text('全部节点')),
+                          for (final n in nodeOptions)
+                            DropdownMenuItem(
+                                value: n.id,
+                                child: Text(
+                                    n.name.isEmpty ? n.id : n.name)),
+                        ],
+                        onChanged: (v) =>
+                            setS(() => nodeSel = v ?? ''),
+                        decoration: const InputDecoration(
+                            labelText: '下发节点'),
+                      ),
+                    const Divider(height: 24),
+                  ] else
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text('目标库不可用（服务端需 v6.8+），可手动填写',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: BocchiTheme.inkSoft)),
+                    ),
+                  TextField(
+                      controller: name,
+                      decoration: const InputDecoration(
+                          labelText: '名称，如 浙江移动')),
+                  DropdownButtonFormField<String>(
+                    initialValue: type,
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'tcp', child: Text('TCP')),
+                      DropdownMenuItem(
+                          value: 'ping', child: Text('Ping')),
+                      DropdownMenuItem(
+                          value: 'http', child: Text('HTTP')),
+                    ],
+                    onChanged: (v) =>
+                        setS(() => type = v ?? 'tcp'),
+                    decoration:
+                        const InputDecoration(labelText: '类型'),
+                  ),
+                  TextField(
+                      controller: host,
+                      decoration: const InputDecoration(
+                          labelText: '目标（IP/域名，http 可填完整 URL）')),
+                  if (type == 'tcp')
+                    TextField(
+                        controller: port,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                            labelText: 'TCP 端口')),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消')),
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('添加')),
-          ],
-        ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消')),
+              TextButton(
+                  onPressed: canAdd
+                      ? () => Navigator.pop(ctx, true)
+                      : null,
+                  child: const Text('添加')),
+            ],
+          );
+        },
       ),
     );
     if (ok == true) {
@@ -184,6 +305,7 @@ class _ProbesPageState extends State<ProbesPage> {
           'port': int.tryParse(port.text.trim()) ?? 0,
           'interval': 60,
           'enabled': true,
+          if (nodeSel.isNotEmpty) 'node_id': nodeSel,
         });
         showOk(context, '已添加');
         _fetch();
