@@ -12,6 +12,83 @@ enum ProbesStyle {
   sectioned, // 分区版：独立底色块
 }
 
+/// PickMyVPS 式线路小胶囊：主题色浅底 + 主题色描边 + 圆角（参考页是
+/// 青色虚线边框，Flutter 没有虚线边框，用半透明实线描边近似；颜色走
+/// 当前主题，不写死粉色）
+class LineCapsule extends StatelessWidget {
+  final String label;
+  final Color? color;
+  const LineCapsule(this.label, {super.key, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? BocchiTheme.pinkDeep;
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.withValues(alpha: 0.45), width: 1),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 10.5, color: c, fontWeight: FontWeight.w700)),
+    );
+  }
+}
+
+/// 按省份分组探测结果（名字以 移动/电信/联通 结尾，前面是省份）；
+/// 每组内按 移动/电信/联通 排序。列表行和详情页探测目标共用。
+Map<String, List<NodeProbe>> groupProbesByRegion(
+    List<NodeProbe> ps) {
+  final map = <String, List<NodeProbe>>{};
+  for (final p in ps) {
+    var region = '其他';
+    for (final c in ['移动', '电信', '联通']) {
+      if (p.name.endsWith(c) && p.name.length > c.length) {
+        region = p.name.substring(0, p.name.length - c.length);
+        break;
+      }
+    }
+    map.putIfAbsent(region, () => []).add(p);
+  }
+  const order = ['移动', '电信', '联通'];
+  for (final list in map.values) {
+    list.sort((a, b) {
+      var ai = order.indexWhere((c) => a.name.endsWith(c));
+      var bi = order.indexWhere((c) => b.name.endsWith(c));
+      if (ai < 0) ai = 99;
+      if (bi < 0) bi = 99;
+      return ai.compareTo(bi);
+    });
+  }
+  return map;
+}
+
+/// 当前省份的那组探测（优先 AppState 存的省份，没有就默认浙江，
+/// 再没有取首组）。列表行和详情页探测目标共用。
+List<NodeProbe> probesForCurrentRegion(List<NodeProbe> ps) {
+  final groups = groupProbesByRegion(ps);
+  if (groups.isEmpty) return const [];
+  final regions = groups.keys.toList();
+  final saved = AppState.instance.probeRegion;
+  final region = (saved != null && regions.contains(saved))
+      ? saved
+      : regions.contains('浙江')
+          ? '浙江'
+          : regions.first;
+  return groups[region] ?? [];
+}
+
+/// 运营商简称（探测名以它结尾；不以三网结尾的返回原名）
+String carrierOf(NodeProbe p) {
+  for (final c in ['移动', '电信', '联通']) {
+    if (p.name.endsWith(c)) return c;
+  }
+  return p.name;
+}
+
 /// 手机版统一节点卡：名字+图标+余期+💻 / pills / 指标2x2 / 三统计盒 / 探测目标
 /// 全部页、单机页共用
 class PhoneNodeCard extends StatelessWidget {
@@ -270,36 +347,9 @@ class _RegionProbes extends StatefulWidget {
 class _RegionProbesState extends State<_RegionProbes> {
   String? _region;
 
-  static Map<String, List<NodeProbe>> _groupByRegion(
-      List<NodeProbe> ps) {
-    final map = <String, List<NodeProbe>>{};
-    for (final p in ps) {
-      var region = '其他';
-      for (final c in ['移动', '电信', '联通']) {
-        if (p.name.endsWith(c) && p.name.length > c.length) {
-          region =
-              p.name.substring(0, p.name.length - c.length);
-          break;
-        }
-      }
-      map.putIfAbsent(region, () => []).add(p);
-    }
-    const order = ['移动', '电信', '联通'];
-    for (final list in map.values) {
-      list.sort((a, b) {
-        var ai = order.indexWhere((c) => a.name.endsWith(c));
-        var bi = order.indexWhere((c) => b.name.endsWith(c));
-        if (ai < 0) ai = 99;
-        if (bi < 0) bi = 99;
-        return ai.compareTo(bi);
-      });
-    }
-    return map;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final groups = _groupByRegion(widget.node.nodeProbes);
+    final groups = groupProbesByRegion(widget.node.nodeProbes);
     if (groups.isEmpty) return const SizedBox.shrink();
     final regions = groups.keys.toList();
     if (_region == null || !regions.contains(_region)) {
@@ -312,6 +362,11 @@ class _RegionProbesState extends State<_RegionProbes> {
               : regions.first;
     }
     final ps = groups[_region] ?? [];
+    double? minLat;
+    for (final p in ps) {
+      final l = p.latencyMs;
+      if (l != null && (minLat == null || l < minLat)) minLat = l;
+    }
     final slim = widget.style == ProbesStyle.slim;
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,58 +386,16 @@ class _RegionProbesState extends State<_RegionProbes> {
           ],
         ),
         SizedBox(height: slim ? 6 : 10),
-        ...ps.map((p) => Padding(
-              padding: EdgeInsets.only(
-                  bottom: slim ? 8 : 12),
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(p.name,
-                            style: TextStyle(
-                                fontSize:
-                                    slim ? 13 : 14,
-                                color: BocchiTheme.ink)),
-                      ),
-                      Text(
-                        p.latencyMs == null
-                            ? '--'
-                            : '${p.latencyMs!.toStringAsFixed(0)} ms',
-                        style: TextStyle(
-                            fontSize: slim ? 14 : 15,
-                            fontWeight: FontWeight.w700,
-                            color: BocchiTheme.ink),
-                      ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        width: 52,
-                        child: Text(
-                          p.lossPct == null
-                              ? '--'
-                              : '丢包 ${p.lossPct!.toStringAsFixed(1)}%',
-                          textAlign: TextAlign.right,
-                          style:  TextStyle(
-                              fontSize: 11,
-                              color:
-                                  BocchiTheme.inkSoft),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  // key 含节点 id + 当前省份：切省份/切节点时新建 State
-                  // 重播渐进动画；同节点同省份的数据刷新同 key 不重播。
-                  PinkBars(
-                      key: ValueKey('pink-${widget.node.id}-$_region'),
-                      latencies: p.histLat,
-                      oks: p.bars,
-                      height: slim ? 5 : 8),
-                ],
-              ),
-            )),
+        // PickMyVPS 式两行格：延迟大数字在上、线路胶囊在下，三网横排；
+        // 最低延迟的数字用主题色标出；丢包小灰字跟在胶囊后；每格下面
+        // 各留一条纤细历史小条。
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final p in ps)
+              Expanded(child: _probeCell(p, minLat)),
+          ],
+        ),
       ],
     );
     if (widget.style == ProbesStyle.sectioned) {
@@ -408,6 +421,67 @@ class _RegionProbesState extends State<_RegionProbes> {
         Divider(height: slim ? 20 : 28),
         content,
       ],
+    );
+  }
+
+  /// 探测目标单格：延迟大数字在上、线路胶囊在下
+  Widget _probeCell(NodeProbe p, double? minLat) {
+    final lat = p.latencyMs;
+    final isMin = lat != null && lat == minLat;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: lat == null ? '--' : lat.toStringAsFixed(0),
+                  style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      color: isMin
+                          ? BocchiTheme.pinkDeep
+                          : BocchiTheme.ink),
+                ),
+                TextSpan(
+                    text: ' ms',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: BocchiTheme.inkSoft)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              LineCapsule(carrierOf(p)),
+              if (p.lossPct != null) ...[
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    '丢包 ${p.lossPct!.toStringAsFixed(1)}%',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: BocchiTheme.inkSoft),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          // key 含节点 id + 当前省份 + 任务 id：切省份/切节点时新建
+          // State 重播渐进动画；同节点同省份的数据刷新同 key 不重播。
+          PinkBars(
+              key: ValueKey(
+                  'pink-${widget.node.id}-$_region-${p.taskId}'),
+              latencies: p.histLat,
+              oks: p.bars,
+              height: 5),
+        ],
+      ),
     );
   }
 

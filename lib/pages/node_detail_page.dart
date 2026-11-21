@@ -1023,7 +1023,14 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
           ],
         ),
         children: [
-          for (final hop in hops) _mtrRow(hop),
+          for (var i = 0; i < hops.length; i++) ...[
+            _mtrRow(hops[i]),
+            if (i < hops.length - 1)
+              Divider(
+                  height: 1,
+                  color: BocchiTheme.inkSoft
+                      .withValues(alpha: 0.12)),
+          ],
         ],
       ),
     );
@@ -1032,7 +1039,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
   Widget _mtrRow(Map<String, dynamic> hop) {
     final avg = hop['avg'];
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1.5),
+      padding: const EdgeInsets.symmetric(vertical: 3.5),
       child: Row(
         children: [
           SizedBox(
