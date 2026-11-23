@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../state.dart';
@@ -87,6 +88,13 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
   Map<String, dynamic>? _diskFc;
   // PickMyVPS 式排名行：三网平均在 N 台节点中排第 X（另起请求算，失败不显示）
   String? _rankText;
+  // 去程本机直测：手机直连节点 TCP 握手耗时（_probeOutbound）。
+  // 服务端测不了去程（拨测全在 VPS 上跑），这行是唯一能拿到去程数的办法。
+  double? _outboundMs;
+  int? _outboundPort;
+  bool _outboundBusy = false;
+  bool _outboundFailed = false;
+  String? _outboundFor; // 已测过哪台节点（进页自动测一次，切节点才重测）
 
   @override
   void initState() {
@@ -198,6 +206,11 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       });
       widget.onNode?.call(nn);
       _fetchRank(nodes);
+      // 进页自动测一次去程（本机直连）；下拉刷新不重测，点行内刷新才重测
+      if (_outboundFor != nn.id) {
+        _outboundFor = nn.id;
+        _probeOutbound(nn);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -1068,15 +1081,78 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
     );
   }
 
+  /// 去程本机直测：服务端测不了去程（全部拨测都在 VPS 上跑），改由手机
+  /// 直连节点测 TCP 握手耗时——手机在国内，这条就是去程方向。3 次取中位，
+  /// 端口先走节点的 SSH 端口（各 VPS 必开），不通再试 443；只建连就关，
+  /// 不发任何应用层数据。测的是手机当前网络（流量卡/ WiFi）到节点的延迟，
+  /// 不是分运营商的去程线路名（那要 traceroute，手机无 root 做不了）。
+  Future<double?> _tcpRtt(String ip, int port) async {
+    final sw = Stopwatch()..start();
+    try {
+      final s = await Socket.connect(ip, port,
+          timeout: const Duration(seconds: 5));
+      sw.stop();
+      s.destroy();
+      return sw.elapsedMilliseconds.toDouble();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _probeOutbound(ProbeNode n) async {
+    final ip = n.ip.trim();
+    if (ip.isEmpty) {
+      if (mounted) setState(() => _outboundFailed = true);
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _outboundBusy = true;
+        _outboundFailed = false;
+        _outboundMs = null;
+      });
+    }
+    final ports = <int>[];
+    for (final p in [n.sshPort ?? 22, 443]) {
+      if (!ports.contains(p)) ports.add(p);
+    }
+    double? best;
+    int? bestPort;
+    for (final port in ports) {
+      final samples = <double>[];
+      for (var i = 0; i < 3; i++) {
+        final r = await _tcpRtt(ip, port);
+        if (r != null) samples.add(r);
+        if (!mounted) return;
+      }
+      if (samples.isNotEmpty) {
+        samples.sort();
+        best = samples[samples.length ~/ 2];
+        bestPort = port;
+        break;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _outboundBusy = false;
+      _outboundMs = best;
+      _outboundPort = bestPort;
+      _outboundFailed = best == null;
+    });
+  }
+
   /// 线路（PickMyVPS 式：每运营商一行 跳数·末跳延迟·末跳 host，
   /// 回程线路判定（TcpQuality 同款前缀规则，见 workspace/tq-clean/
   /// runTcpQuality-core.sh 的 route_label_from_ip_trace；无 ASN 数据，
   /// 只看跳点里的公网 IPv4）。
-  /// 去程测不了：全部拨测都在 VPS 上跑，去程要国内有探测点才测得到，不写、不造。
+  /// 去程不在 MTR 里：全部拨测都在 VPS 上跑，去程由本机直测（_probeOutbound）。
   /// 电信：只剩 59.43.* 且无 163 跳 = CN2GIA；59.43 与 163 混走 = CN2GT；
   /// 只有 163 跳 = 163。联通：210.14/210.51/210.78/218.105 = 9929，
   /// 否则 219.158 = 4837。移动：223.120/223.119 = CMIN2，否则 221.183/
   /// 111.24/111.13 = CMNET。
+  /// 注意：跳点里没有这些前缀就判不出（英国 9929 电信实测：跳点是 Zayo
+  /// 中转 64.125.* + 几跳不回包，59.43/163 全程不出现），此时行尾写
+  /// “回程未识别”，不瞎猜——中转 IP 不是骨干网，不能拿它当线路名。
   String? _routeLabel(String target, List<Map<String, dynamic>> hops) {
     final ips = <String>[];
     final ipRe = RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b');
@@ -1147,10 +1223,52 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
               )
             else
               for (final t in targets) _mtrGroup(t),
+            // 去程（本机直测）：手机直连节点 TCP 握手耗时，进页自动测一次，
+            // 点行或点刷新重测；回程行在上面，去程只有这一行（不分运营商）
+            const SizedBox(height: 4),
+            Divider(
+                height: 1,
+                color:
+                    BocchiTheme.inkSoft.withValues(alpha: 0.12)),
+            InkWell(
+              onTap: _node == null
+                  ? null
+                  : () => _probeOutbound(_node!),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    Text('去程',
+                        style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: BocchiTheme.ink)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _outboundBusy
+                            ? '本机直测中…'
+                            : _outboundMs != null
+                                ? '约 ${_outboundMs!.toStringAsFixed(0)} ms · 本机直连（TCP，端口 $_outboundPort）'
+                                : _outboundFailed
+                                    ? '测不到，点按重试'
+                                    : '点按测量',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: BocchiTheme.inkSoft),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Icon(Icons.refresh,
+                        size: 16, color: BocchiTheme.inkSoft),
+                  ],
+                ),
+              ),
+            ),
             if (targets.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text('回程由 MTR 跳点判定；去程需国内探测点，当前未测',
+                child: Text('回程由 MTR 跳点判定；去程为本机直连实测',
                     style: TextStyle(
                         fontSize: 11.5, color: BocchiTheme.inkSoft)),
               ),
@@ -1304,6 +1422,10 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       parts.add(
           '$region视角回程：${routes.entries.map((e) => '${e.key} ${e.value}').join('、')}');
     }
+    // 去程（本机直测）：只有测出数才写
+    if (_outboundMs != null) {
+      parts.add('本机去程约 ${_outboundMs!.toStringAsFixed(0)} ms');
+    }
     // 探测省份视角三网延迟
     if (groups.isNotEmpty) {
       final ps = groups[region] ?? [];
@@ -1418,7 +1540,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                '${hops.length} 跳${route == null ? '' : ' · 回 $route'}${last == null ? '' : ' · 末跳 ${(last as num).toStringAsFixed(1)} ms'}${lastHost.isEmpty ? '' : ' · $lastHost'}',
+                '${hops.length} 跳${hops.isEmpty ? '' : (route == null ? ' · 回程未识别' : ' · 回 $route')}${last == null ? '' : ' · 末跳 ${(last as num).toStringAsFixed(1)} ms'}${lastHost.isEmpty ? '' : ' · $lastHost'}',
                 style: TextStyle(
                     fontSize: 12, color: BocchiTheme.inkSoft),
                 overflow: TextOverflow.ellipsis,
