@@ -85,6 +85,8 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
   List<Map<String, dynamic>> _unlock = [];
   Map<String, dynamic>? _uptime;
   Map<String, dynamic>? _diskFc;
+  // PickMyVPS 式排名行：三网平均在 N 台节点中排第 X（另起请求算，失败不显示）
+  String? _rankText;
 
   @override
   void initState() {
@@ -102,6 +104,50 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       if (!mounted) return;
       setState(() => _netq = netq);
     } catch (_) {}
+  }
+
+  /// 三网平均排名（PickMyVPS 式「在 N 台中排第 X」）：各节点 24h
+  /// netq 最新延迟取三网均值排个序；拿不到数据的节点不参与排名。
+  /// 主内容不受影响，失败就悄悄不显示。
+  Future<void> _fetchRank(List<ProbeNode> nodes) async {
+    try {
+      final avgs = <String, double>{};
+      final cur = _avgNetq(_netq);
+      if (cur != null) avgs[widget.nodeId] = cur;
+      for (final n in nodes) {
+        if (n.id == widget.nodeId) continue;
+        try {
+          final d = await AppState.instance.client
+              .getNetq(n.id, range: '24h');
+          final a = _avgNetq(d);
+          if (a != null) avgs[n.id] = a;
+        } catch (_) {}
+      }
+      if (!mounted ||
+          avgs.length < 2 ||
+          !avgs.containsKey(widget.nodeId)) {
+        return;
+      }
+      final sorted = avgs.entries.toList()
+        ..sort((a, b) => a.value.compareTo(b.value));
+      final rank =
+          sorted.indexWhere((e) => e.key == widget.nodeId) + 1;
+      setState(() => _rankText =
+          '三网平均在 ${avgs.length} 台节点中排第 $rank');
+    } catch (_) {}
+  }
+
+  /// netq 各运营商最新延迟的均值（无数据返回 null）
+  double? _avgNetq(Map<String, dynamic> netq) {
+    final vals = <double>[];
+    for (final isp in _ispNames.keys) {
+      final lt = (netq[isp] as Map<String, dynamic>?)?['latest']
+          as Map<String, dynamic>?;
+      final lat = lt?['lat'];
+      if (lat != null) vals.add((lat as num).toDouble());
+    }
+    if (vals.isEmpty) return null;
+    return vals.reduce((a, b) => a + b) / vals.length;
   }
 
   Future<void> _fetch() async {
@@ -147,9 +193,11 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
         _unlock = unlock;
         _uptime = uptime;
         _diskFc = diskFc;
+        _rankText = null;
         _loading = false;
       });
       widget.onNode?.call(nn);
+      _fetchRank(nodes);
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -176,7 +224,12 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
               onChanged: _fetch,
               compact: true,
               probesStyle: ProbesStyle.slim,
-              netq: _netq),
+              netq: _netq,
+              rankText: _rankText),
+          // PickMyVPS 式卡片顺序：延迟（顶部节点卡内）→ 线路 → 套餐与规格，
+          // 再往下是图表/流量/概览/三网图/解锁，末尾是自动小结
+          _mtrCard(),
+          _specCard(n),
           // 图表范围选择器紧贴图表上方（原在页底、流量卡之下，控制关系反了）；
           // 流量卡自带的今日/本周开关在流量卡内，两者作用域从此分开
           _rangeCard(),
@@ -196,7 +249,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
           _overviewCard(n),
           _netqCard(),
           _unlockCard(),
-          _mtrCard(),
+          _summaryCard(n),
         ],
       ),
     );
@@ -1014,8 +1067,8 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
     );
   }
 
-  /// MTR 逐跳（GET /api/mtr/<nid>）：按运营商折叠，默认收起、标题露
-  /// 摘要（跳数 + 末跳延迟）；原来三网几十行全摊开是一堵长墙。
+  /// 线路（PickMyVPS 式：每运营商一行 跳数·末跳延迟·末跳 host，
+  /// 点开展开逐跳；GET /api/mtr/<nid>，agent 每 30 分钟跑一次）。
   /// 丢包列已删：agent 根本没报逐跳丢包，每行一个「丢包 --」毫无意义
   Widget _mtrCard() {
     final targets = _mtr.keys
@@ -1027,7 +1080,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionTitle('🛣 MTR 逐跳'),
+            _sectionTitle('🛣 线路'),
             if (targets.isEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -1041,12 +1094,173 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
     );
   }
 
+  /// 套餐与规格（PickMyVPS 式一行规格 + 一行价格/到期/余值）：
+  /// 只有已有的数据才拼，没数据的段直接省掉，全空就不画这张卡。
+  /// 国际延迟/带宽测速/性能三项服务端没数据，不写、不造。
+  Widget _specCard(ProbeNode n) {
+    final specs = <String>[];
+    if (n.cpuCores > 0) specs.add('${n.cpuCores}核');
+    if (n.memTotal > 0) {
+      specs.add('${PhoneNodeCard.mb(n.memTotal)}内存');
+    }
+    if (n.diskTotal > 0) {
+      specs.add('${PhoneNodeCard.gb(n.diskTotal)}硬盘');
+    }
+    if (n.quotaGb > 0) {
+      specs.add(
+          '${n.quotaGb.toStringAsFixed(n.quotaGb % 1 == 0 ? 0 : 1)} GB 流量');
+    }
+    final prices = <String>[];
+    if ((n.price ?? 0) > 0) {
+      prices.add(
+          '${n.currency ?? '¥'}${n.price!.toStringAsFixed(n.price! % 1 == 0 ? 0 : 2)} / ${n.billCycle == 'yearly' ? '年' : '月'}');
+    }
+    final perTb = pricePerTb(n);
+    if (perTb != null) prices.add('流量单价 $perTb');
+    if (n.expireDate != null && n.expireDate!.isNotEmpty) {
+      prices.add(
+          '到期 ${n.expireDate}${n.daysLeft == null ? '' : '（余 ${n.daysLeft} 天）'}');
+    }
+    if (n.remainValue != null) {
+      prices.add(
+          '余值 ${n.currency ?? '¥'}${n.remainValue!.toStringAsFixed(2)}');
+    }
+    if (specs.isEmpty && prices.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle('📦 套餐与规格'),
+            if (specs.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(specs.join(' · '),
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: BocchiTheme.ink)),
+            ],
+            if (prices.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(prices.join(' · '),
+                  style: TextStyle(
+                      fontSize: 12.5, color: BocchiTheme.inkSoft)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 小结（PickMyVPS 式自动总结段落）：探测省份视角三网延迟 + 排名 +
+  /// 配置价格 + 解锁情况 + 在线/余期；只有已有的数据才写进句子。
+  Widget _summaryCard(ProbeNode n) {
+    final parts = <String>[];
+    // 探测省份视角三网延迟（与顶部探测目标同口径：存过的省份优先）
+    final groups = groupProbesByRegion(n.nodeProbes);
+    if (groups.isNotEmpty) {
+      final regions = groups.keys.toList();
+      final saved = AppState.instance.probeRegion;
+      final region = (saved != null && regions.contains(saved))
+          ? saved
+          : regions.contains('浙江')
+              ? '浙江'
+              : regions.first;
+      final ps = groups[region] ?? [];
+      const order = ['电信', '联通', '移动'];
+      final lats = <String>[];
+      for (final c in order) {
+        NodeProbe? p;
+        for (final e in ps) {
+          if (e.name.endsWith(c)) {
+            p = e;
+            break;
+          }
+        }
+        final lat = p?.latencyMs;
+        if (lat != null) lats.add('$c ${lat.toStringAsFixed(0)}ms');
+      }
+      if (lats.isNotEmpty) {
+        parts.add(
+            '$region视角三网延迟：${lats.join('、')}${_rankText == null ? '' : '，$_rankText'}');
+      } else if (_rankText != null) {
+        parts.add(_rankText!);
+      }
+    } else if (_rankText != null) {
+      parts.add(_rankText!);
+    }
+    // 配置与价格
+    final specs = <String>[];
+    if (n.cpuCores > 0) specs.add('${n.cpuCores}核');
+    if (n.memTotal > 0) {
+      specs.add('${PhoneNodeCard.mb(n.memTotal)}内存');
+    }
+    if (n.diskTotal > 0) {
+      specs.add('${PhoneNodeCard.gb(n.diskTotal)}硬盘');
+    }
+    if (n.quotaGb > 0) {
+      specs.add(
+          '每月 ${n.quotaGb.toStringAsFixed(n.quotaGb % 1 == 0 ? 0 : 1)}GB 流量');
+    }
+    final priceBits = <String>[];
+    if ((n.price ?? 0) > 0) {
+      priceBits.add(
+          '价格 ${n.currency ?? '¥'}${n.price!.toStringAsFixed(n.price! % 1 == 0 ? 0 : 2)}/${n.billCycle == 'yearly' ? '年' : '月'}');
+    }
+    final perTb = pricePerTb(n);
+    if (perTb != null) priceBits.add('流量单价 $perTb');
+    final cfgBits = <String>[];
+    if (specs.isNotEmpty) cfgBits.add('配置：${specs.join('、')}');
+    if (priceBits.isNotEmpty) cfgBits.add(priceBits.join('，'));
+    if (cfgBits.isNotEmpty) parts.add(cfgBits.join('；'));
+    // 解锁情况
+    if (_unlock.isNotEmpty) {
+      final okCount = _unlock.where((u) => u['ok'] == true).length;
+      final blocked = _unlock
+          .where((u) => u['ok'] == false)
+          .map((u) =>
+              _unlockNames['${u['service']}'] ?? '${u['service']}')
+          .toList();
+      parts.add(blocked.isEmpty
+          ? '解锁 $okCount/${_unlock.length}，全部通过'
+          : '解锁 $okCount/${_unlock.length}，仅 ${blocked.join('、')} 拦截');
+    }
+    // 在线与余期
+    final upBits = <String>[];
+    if (n.uptime != null) upBits.add('已在线 ${fmtUptime(n.uptime)}');
+    if (n.daysLeft != null) {
+      upBits.add(n.daysLeft! < 0 ? '已过期' : '余期 ${n.daysLeft} 天');
+    }
+    if (upBits.isNotEmpty) parts.add(upBits.join('，'));
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle('📝 小结'),
+            const SizedBox(height: 8),
+            Text(parts.map((p) => p.endsWith('。') ? p : '$p。').join(),
+                style:
+                    TextStyle(fontSize: 13, color: BocchiTheme.ink)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _mtrGroup(String t) {
     final hops = (((_mtr[t] as Map<String, dynamic>?)?['hops']
                 as List?) ??
             [])
         .cast<Map<String, dynamic>>();
     final last = hops.isEmpty ? null : hops.last['avg'];
+    final lastHost =
+        hops.isEmpty ? '' : '${hops.last['host'] ?? ''}';
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
@@ -1066,7 +1280,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                '${hops.length} 跳${last == null ? '' : ' · 末跳 ${(last as num).toStringAsFixed(1)} ms'}',
+                '${hops.length} 跳${last == null ? '' : ' · 末跳 ${(last as num).toStringAsFixed(1)} ms'}${lastHost.isEmpty ? '' : ' · $lastHost'}',
                 style: TextStyle(
                     fontSize: 12, color: BocchiTheme.inkSoft),
                 overflow: TextOverflow.ellipsis,

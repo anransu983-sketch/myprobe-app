@@ -6,9 +6,10 @@ import '../theme.dart';
 import '../ui.dart';
 import '../widgets/widgets.dart';
 
-/// 节点对比页（v1.17.3，借鉴 PickMyVPS 对比）：选 2–4 台并排比。
+/// 节点对比页（v1.17.4，借鉴 PickMyVPS 对比）：选 2–4 台并排比。
 /// 规格对照表 + 三网延迟趋势。ICMP 用 netq 采样；TCP 用 TCP 类型
 /// 拨测任务的各节点最新结果（任务本身没有时不造数据，只给空态）。
+/// TCP 表可按区域（省份组内三网）或按运营商（运营商组内各省份）分组。
 class ComparePage extends StatefulWidget {
   const ComparePage({super.key});
   @override
@@ -544,6 +545,11 @@ class _ComparePageState extends State<ComparePage> {
     );
   }
 
+  /// TCP 档分组方式：region=按区域（省份组内三网），carrier=按运营商
+  /// （运营商组内各省份）。任务名按「省份+运营商」解析，解析不出的
+  /// 进「其他」组，不丢数据。
+  String _tcpGroup = 'region';
+
   /// TCP 档：TCP 类型拨测任务 × 各节点最新延迟（nodeProbes 按 taskId 对齐）。
   /// 没有 TCP 任务只给空态，不造数据；失败不计延迟，失败格只显示 --。
   Widget _tcpCard() {
@@ -566,62 +572,44 @@ class _ComparePageState extends State<ComparePage> {
                   style: TextStyle(
                       fontSize: 12.5, color: BocchiTheme.inkSoft))
             else ...[
-              Table(
-                columnWidths: {
-                  0: const FlexColumnWidth(1.4),
-                  for (var i = 0; i < ns.length; i++)
-                    i + 1: const FlexColumnWidth(1),
-                },
-                border: TableBorder(
-                  horizontalInside: BorderSide(
-                      color: BocchiTheme.inkSoft.withValues(alpha: 0.14)),
-                ),
+              Row(
                 children: [
-                  TableRow(
-                    children: [
-                      const SizedBox.shrink(),
-                      for (final n in ns)
-                        Padding(
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 6),
-                          child: Text(
-                            n.name.isEmpty ? n.id : n.name,
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: BocchiTheme.pinkDeep),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                  ),
-                  for (final t in tcp)
-                    TableRow(
-                      children: [
-                        Padding(
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 6),
-                          child: Text(t.name,
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: BocchiTheme.inkSoft),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis),
-                        ),
-                        for (final n in ns)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 6, horizontal: 2),
-                            child: Text(_tcpCell(n, t.id),
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: BocchiTheme.ink)),
-                          ),
-                      ],
+                  Text('分组',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: BocchiTheme.inkSoft)),
+                  const SizedBox(width: 8),
+                  for (final g in ['region', 'carrier'])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(g == 'region' ? '按区域' : '按运营商',
+                            style: const TextStyle(fontSize: 12)),
+                        selected: _tcpGroup == g,
+                        selectedColor: BocchiTheme.pinkDeep,
+                        labelStyle: TextStyle(
+                            color: _tcpGroup == g
+                                ? Colors.white
+                                : BocchiTheme.ink),
+                        onSelected: (_) =>
+                            setState(() => _tcpGroup = g),
+                      ),
                     ),
                 ],
               ),
+              for (final grp in _tcpGroups(tcp)) ...[
+                Padding(
+                  padding:
+                      const EdgeInsets.only(top: 10, bottom: 2),
+                  child: Text(grp.$1,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: BocchiTheme.pinkDeep)),
+                ),
+                _tcpTable(ns, grp.$2),
+              ],
               const SizedBox(height: 8),
               Text(
                   '说明：连接被拒 / 超时均不计延迟，失败只显示 --；TCP 任务请填可建连的目标（如网站 443 端口），运营商 DNS 的 443 端口通常不通，测不到数据是正常的。',
@@ -632,6 +620,110 @@ class _ComparePageState extends State<ComparePage> {
         ),
       ),
     );
+  }
+
+  /// 一组 TCP 任务的对照表：首列任务名，其余列是各节点最新延迟
+  Widget _tcpTable(List<ProbeNode> ns, List<ProbeTask> tasks) {
+    return Table(
+      columnWidths: {
+        0: const FlexColumnWidth(1.4),
+        for (var i = 0; i < ns.length; i++)
+          i + 1: const FlexColumnWidth(1),
+      },
+      border: TableBorder(
+        horizontalInside: BorderSide(
+            color: BocchiTheme.inkSoft.withValues(alpha: 0.14)),
+      ),
+      children: [
+        TableRow(
+          children: [
+            const SizedBox.shrink(),
+            for (final n in ns)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(
+                  n.name.isEmpty ? n.id : n.name,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: BocchiTheme.pinkDeep),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+        ),
+        for (final t in tasks)
+          TableRow(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(t.name,
+                    style: TextStyle(
+                        fontSize: 12, color: BocchiTheme.inkSoft),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+              ),
+              for (final n in ns)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 6, horizontal: 2),
+                  child: Text(_tcpCell(n, t.id),
+                      style: TextStyle(
+                          fontSize: 12, color: BocchiTheme.ink)),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  /// 任务名解析：结尾是 移动/电信/联通 →（省份，运营商），否则
+  /// （其他，原名）。与 node_card 的 groupProbesByRegion 同口径。
+  (String, String) _splitTcpName(String name) {
+    for (final c in ['移动', '电信', '联通']) {
+      if (name.endsWith(c) && name.length > c.length) {
+        return (name.substring(0, name.length - c.length), c);
+      }
+    }
+    return ('其他', name);
+  }
+
+  /// TCP 任务分组：按区域时组内按 移动/电信/联通 排；按运营商时
+  /// 组内保持任务原顺序。省份组按首次出现顺序，运营商组按三网顺序。
+  List<(String, List<ProbeTask>)> _tcpGroups(
+      List<ProbeTask> tcp) {
+    const carrierOrder = ['移动', '电信', '联通'];
+    if (_tcpGroup == 'carrier') {
+      final map = <String, List<ProbeTask>>{};
+      for (final t in tcp) {
+        final c = _splitTcpName(t.name).$2;
+        final key = carrierOrder.contains(c) ? c : '其他';
+        map.putIfAbsent(key, () => []).add(t);
+      }
+      final keys = [
+        ...carrierOrder.where((c) => map.containsKey(c)),
+        if (map.containsKey('其他')) '其他',
+      ];
+      return [for (final k in keys) (k, map[k]!)];
+    }
+    final map = <String, List<ProbeTask>>{};
+    for (final t in tcp) {
+      final r = _splitTcpName(t.name).$1;
+      map.putIfAbsent(r, () => []).add(t);
+    }
+    for (final list in map.values) {
+      list.sort((a, b) {
+        var ai =
+            carrierOrder.indexWhere((c) => a.name.endsWith(c));
+        var bi =
+            carrierOrder.indexWhere((c) => b.name.endsWith(c));
+        if (ai < 0) ai = 99;
+        if (bi < 0) bi = 99;
+        return ai.compareTo(bi);
+      });
+    }
+    return map.entries.map((e) => (e.key, e.value)).toList();
   }
 
   String _tcpCell(ProbeNode n, int taskId) {

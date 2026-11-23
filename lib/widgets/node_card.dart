@@ -101,6 +101,9 @@ class PhoneNodeCard extends StatelessWidget {
   final bool compact;
   /// 三网 24h 采样（详情页传，养鸡场式 24 格分段条用；不传就不画）
   final Map<String, dynamic>? netq;
+  /// 三网平均排名文案（详情页传，如「三网平均在 4 台节点中排第 2」；
+  /// 不传就不显示，列表页不受影响）
+  final String? rankText;
   const PhoneNodeCard(
       {super.key,
       required this.node,
@@ -108,7 +111,8 @@ class PhoneNodeCard extends StatelessWidget {
       this.onTap,
       this.probesStyle = ProbesStyle.standard,
       this.compact = false,
-      this.netq});
+      this.netq,
+      this.rankText});
 
   static String mb(int b) =>
       b <= 0 ? '--' : '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
@@ -313,7 +317,11 @@ class PhoneNodeCard extends StatelessWidget {
                             : '状态 / IP')),
               ],
             ),
-            _RegionProbes(node: n, style: probesStyle, netq: netq),
+            _RegionProbes(
+                node: n,
+                style: probesStyle,
+                netq: netq,
+                rankText: rankText),
             _TagRow(node: n),
           ],
         ),
@@ -383,10 +391,13 @@ class _RegionProbes extends StatefulWidget {
   final ProbesStyle style;
   /// 三网 24h 采样（详情页传）：每格下面画养鸡场式 24 格分段条
   final Map<String, dynamic>? netq;
+  /// 三网平均排名文案（详情页传）：画在三网格子下方一行
+  final String? rankText;
   const _RegionProbes(
       {required this.node,
       this.style = ProbesStyle.standard,
-      this.netq});
+      this.netq,
+      this.rankText});
   @override
   State<_RegionProbes> createState() =>
       _RegionProbesState();
@@ -444,6 +455,13 @@ class _RegionProbesState extends State<_RegionProbes> {
               Expanded(child: _probeCell(p, minLat)),
           ],
         ),
+        // PickMyVPS 式排名行：三网平均在 N 台节点中排第 X（详情页传）
+        if (widget.rankText != null) ...[
+          const SizedBox(height: 8),
+          Text(widget.rankText!,
+              style: TextStyle(
+                  fontSize: 11.5, color: BocchiTheme.inkSoft)),
+        ],
       ],
     );
     if (widget.style == ProbesStyle.sectioned) {
