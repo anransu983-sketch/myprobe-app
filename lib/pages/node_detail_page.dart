@@ -226,10 +226,11 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
               probesStyle: ProbesStyle.slim,
               netq: _netq,
               rankText: _rankText),
-          // PickMyVPS 式卡片顺序：延迟（顶部节点卡内）→ 线路 → 套餐与规格，
-          // 再往下是图表/流量/概览/三网图/解锁，末尾是自动小结
+          // PickMyVPS 式卡片顺序：延迟（顶部节点卡内）→ 线路 → 套餐与规格 →
+          // 网络与性能，再往下是图表/流量/概览/三网图/解锁，末尾是自动小结
           _mtrCard(),
           _specCard(n),
+          _netPerfCard(n),
           // 图表范围选择器紧贴图表上方（原在页底、流量卡之下，控制关系反了）；
           // 流量卡自带的今日/本周开关在流量卡内，两者作用域从此分开
           _rangeCard(),
@@ -1068,6 +1069,64 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
   }
 
   /// 线路（PickMyVPS 式：每运营商一行 跳数·末跳延迟·末跳 host，
+  /// 回程线路判定（TcpQuality 同款前缀规则，见 workspace/tq-clean/
+  /// runTcpQuality-core.sh 的 route_label_from_ip_trace；无 ASN 数据，
+  /// 只看跳点里的公网 IPv4）。
+  /// 去程测不了：全部拨测都在 VPS 上跑，去程要国内有探测点才测得到，不写、不造。
+  /// 电信：只剩 59.43.* 且无 163 跳 = CN2GIA；59.43 与 163 混走 = CN2GT；
+  /// 只有 163 跳 = 163。联通：210.14/210.51/210.78/218.105 = 9929，
+  /// 否则 219.158 = 4837。移动：223.120/223.119 = CMIN2，否则 221.183/
+  /// 111.24/111.13 = CMNET。
+  String? _routeLabel(String target, List<Map<String, dynamic>> hops) {
+    final ips = <String>[];
+    final ipRe = RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b');
+    for (final h in hops) {
+      final m = ipRe.firstMatch('${h['host'] ?? ''}');
+      if (m != null) ips.add(m.group(0)!);
+    }
+    bool has(List<String> pres) =>
+        ips.any((ip) => pres.any((p) => ip.startsWith(p)));
+    switch (target) {
+      case 'telecom':
+        final cn2 = has(['59.43.']);
+        final v163 = has([
+          '202.97.',
+          '202.96.',
+          '219.141.',
+          '219.142.',
+          '106.37.'
+        ]);
+        if (cn2 && !v163) return 'CN2GIA';
+        if (cn2 && v163) return 'CN2GT';
+        if (v163) return '163';
+        return null;
+      case 'unicom':
+        if (has(['210.14.', '210.51.', '210.78.', '218.105.'])) {
+          return '9929';
+        }
+        if (has(['219.158.'])) return '4837';
+        return null;
+      case 'mobile':
+        if (has(['223.120.', '223.119.'])) return 'CMIN2';
+        if (has(['221.183.', '111.24.', '111.13.'])) return 'CMNET';
+        return null;
+    }
+    return null;
+  }
+
+  /// 本页三网回程（运营商名 → 线路名），只有能判定的才进 map
+  Map<String, String> _routeLabels() {
+    final out = <String, String>{};
+    for (final t in _mtr.keys.where((k) => _ispNames.containsKey(k))) {
+      final hops = (((_mtr[t] as Map<String, dynamic>?)?['hops'] as List?) ??
+              [])
+          .cast<Map<String, dynamic>>();
+      final label = _routeLabel(t, hops);
+      if (label != null) out[_ispNames[t]!] = label;
+    }
+    return out;
+  }
+
   /// 点开展开逐跳；GET /api/mtr/<nid>，agent 每 30 分钟跑一次）。
   /// 丢包列已删：agent 根本没报逐跳丢包，每行一个「丢包 --」毫无意义
   Widget _mtrCard() {
@@ -1088,6 +1147,13 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
               )
             else
               for (final t in targets) _mtrGroup(t),
+            if (targets.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('回程由 MTR 跳点判定；去程需国内探测点，当前未测',
+                    style: TextStyle(
+                        fontSize: 11.5, color: BocchiTheme.inkSoft)),
+              ),
           ],
         ),
       ),
@@ -1096,7 +1162,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
 
   /// 套餐与规格（PickMyVPS 式一行规格 + 一行价格/到期/余值）：
   /// 只有已有的数据才拼，没数据的段直接省掉，全空就不画这张卡。
-  /// 国际延迟/带宽测速/性能三项服务端没数据，不写、不造。
+  /// 带宽测速/性能跑分：服务端没数据，不写、不造（国际延迟已挪到网络与性能卡）。
   Widget _specCard(ProbeNode n) {
     final specs = <String>[];
     if (n.cpuCores > 0) specs.add('${n.cpuCores}核');
@@ -1155,20 +1221,91 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
     );
   }
 
+  /// 网络与性能（PickMyVPS 式）：国际延迟 / BGP / IP 质量。
+  /// 只有已有的数据才画行，全空就不画这张卡。
+  /// 带宽测速、性能跑分：agent 没有 speedtest/跑分能力，不写、不造。
+  Widget _netPerfCard(ProbeNode n) {
+    final rows = <({String title, Widget body})>[];
+    // 国际延迟：服务端 v6.9 自种的 AWS东京拨测任务（tcp 443），
+    // 结果走节点 probes；服务端没升级、任务没建出来时这行不画
+    NodeProbe? intl;
+    for (final p in n.nodeProbes) {
+      if (p.name == 'AWS东京') {
+        intl = p;
+        break;
+      }
+    }
+    final ilat = intl?.latencyMs;
+    if (ilat != null) {
+      rows.add((
+        title: '🌍 国际延迟',
+        body: Text('AWS 东京 ${ilat.toStringAsFixed(0)} ms',
+            style: TextStyle(fontSize: 13, color: BocchiTheme.ink)),
+      ));
+    }
+    // BGP：ip-api 的 as 字段如 "AS48266 Catixs Ltd"，只取 AS 号
+    final asn = n.ipAsn == null
+        ? null
+        : RegExp(r'AS\d+').firstMatch(n.ipAsn!)?.group(0);
+    if (asn != null) {
+      rows.add((
+        title: '📶 BGP',
+        body: Text(asn,
+            style: TextStyle(fontSize: 13, color: BocchiTheme.ink)),
+      ));
+    }
+    // IP 质量：原生按 ip-api 代理标记判定（非代理即原生）；低风险同口径
+    final hasIp =
+        n.ipCountry != null || n.ipIsp != null || n.ipAsn != null;
+    if (hasIp) {
+      rows.add((
+        title: '🛡 IP 质量',
+        body: Text(n.ipProxy ? '代理 IP · 高风险' : '原生 IP · 低风险',
+            style: TextStyle(fontSize: 13, color: BocchiTheme.ink)),
+      ));
+    }
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle('🌐 网络与性能'),
+            for (var i = 0; i < rows.length; i++) ...[
+              if (i > 0) _ovDivider(),
+              _ovRow(rows[i].title, rows[i].body),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 小结（PickMyVPS 式自动总结段落）：探测省份视角三网延迟 + 排名 +
   /// 配置价格 + 解锁情况 + 在线/余期；只有已有的数据才写进句子。
   Widget _summaryCard(ProbeNode n) {
     final parts = <String>[];
-    // 探测省份视角三网延迟（与顶部探测目标同口径：存过的省份优先）
+    // 探测省份视角（与顶部探测目标同口径：存过的省份优先）
     final groups = groupProbesByRegion(n.nodeProbes);
+    String? region;
     if (groups.isNotEmpty) {
       final regions = groups.keys.toList();
       final saved = AppState.instance.probeRegion;
-      final region = (saved != null && regions.contains(saved))
+      region = (saved != null && regions.contains(saved))
           ? saved
           : regions.contains('浙江')
               ? '浙江'
               : regions.first;
+    }
+    // 回程线路（MTR 跳点判定）：广东视角回程：电信 CN2GIA、联通 9929、移动 CMIN2
+    final routes = _routeLabels();
+    if (routes.isNotEmpty && region != null) {
+      parts.add(
+          '$region视角回程：${routes.entries.map((e) => '${e.key} ${e.value}').join('、')}');
+    }
+    // 探测省份视角三网延迟
+    if (groups.isNotEmpty) {
       final ps = groups[region] ?? [];
       const order = ['电信', '联通', '移动'];
       final lats = <String>[];
@@ -1261,6 +1398,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
     final last = hops.isEmpty ? null : hops.last['avg'];
     final lastHost =
         hops.isEmpty ? '' : '${hops.last['host'] ?? ''}';
+    final route = _routeLabel(t, hops);
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
@@ -1280,7 +1418,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                '${hops.length} 跳${last == null ? '' : ' · 末跳 ${(last as num).toStringAsFixed(1)} ms'}${lastHost.isEmpty ? '' : ' · $lastHost'}',
+                '${hops.length} 跳${route == null ? '' : ' · 回 $route'}${last == null ? '' : ' · 末跳 ${(last as num).toStringAsFixed(1)} ms'}${lastHost.isEmpty ? '' : ' · $lastHost'}',
                 style: TextStyle(
                     fontSize: 12, color: BocchiTheme.inkSoft),
                 overflow: TextOverflow.ellipsis,
