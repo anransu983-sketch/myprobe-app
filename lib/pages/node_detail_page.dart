@@ -94,6 +94,7 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
   int? _outboundPort;
   bool _outboundBusy = false;
   bool _outboundFailed = false;
+  bool _outboundVpn = false; // 测时发现代理开着：数字不可信，直接明示
   String? _outboundFor; // 已测过哪台节点（进页自动测一次，切节点才重测）
 
   @override
@@ -1081,11 +1082,27 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
     );
   }
 
+  /// 本机是否开了 VPN（TUN）：梦盒/strangers 开着时，所有流量都走代理，
+  /// 直连节点的握手会在代理出口落地，测出来的不是真实去程——1.17.6 实测
+  /// 4ms 就是这么来的（代理节点本身就是这台英国机，等于本机回环）。
+  /// 零依赖做法：扫网卡名，tun*/ppp* 在即为 VPN 在线；扫不到就当没开，
+  /// 宁可多测一次也不错杀。
+  Future<bool> _vpnActive() async {
+    try {
+      final ifs = await NetworkInterface.list();
+      return ifs.any((i) =>
+          i.name.startsWith('tun') || i.name.startsWith('ppp'));
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// 去程本机直测：服务端测不了去程（全部拨测都在 VPS 上跑），改由手机
   /// 直连节点测 TCP 握手耗时——手机在国内，这条就是去程方向。3 次取中位，
   /// 端口先走节点的 SSH 端口（各 VPS 必开），不通再试 443；只建连就关，
   /// 不发任何应用层数据。测的是手机当前网络（流量卡/ WiFi）到节点的延迟，
   /// 不是分运营商的去程线路名（那要 traceroute，手机无 root 做不了）。
+  /// 代理开着时不测：数字是假的，直接明示测不准，不拿假数充数。
   Future<double?> _tcpRtt(String ip, int port) async {
     final sw = Stopwatch()..start();
     try {
@@ -1105,10 +1122,23 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
       if (mounted) setState(() => _outboundFailed = true);
       return;
     }
+    // 代理开着时不测：握手在代理出口落地，数字是假的（1.17.6 的 4ms）。
+    if (await _vpnActive()) {
+      if (mounted) {
+        setState(() {
+          _outboundBusy = false;
+          _outboundVpn = true;
+          _outboundMs = null;
+          _outboundFailed = false;
+        });
+      }
+      return;
+    }
     if (mounted) {
       setState(() {
         _outboundBusy = true;
         _outboundFailed = false;
+        _outboundVpn = false;
         _outboundMs = null;
       });
     }
@@ -1248,11 +1278,13 @@ class NodeDetailBodyState extends State<NodeDetailBody> {
                       child: Text(
                         _outboundBusy
                             ? '本机直测中…'
-                            : _outboundMs != null
-                                ? '约 ${_outboundMs!.toStringAsFixed(0)} ms · 本机直连（TCP，端口 $_outboundPort）'
-                                : _outboundFailed
-                                    ? '测不到，点按重试'
-                                    : '点按测量',
+                            : _outboundVpn
+                                ? '代理已开启，去程测不准 · 关代理后点按重测'
+                                : _outboundMs != null
+                                    ? '约 ${_outboundMs!.toStringAsFixed(0)} ms · 本机直连（TCP，端口 $_outboundPort）'
+                                    : _outboundFailed
+                                        ? '测不到，点按重试'
+                                        : '点按测量',
                         style: TextStyle(
                             fontSize: 12,
                             color: BocchiTheme.inkSoft),
