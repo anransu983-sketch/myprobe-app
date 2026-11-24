@@ -11,7 +11,9 @@ import '../widgets/widgets.dart';
 /// 拨测任务的各节点最新结果（任务本身没有时不造数据，只给空态）。
 /// TCP 表可按区域（省份组内三网）或按运营商（运营商组内各省份）分组。
 class ComparePage extends StatefulWidget {
-  const ComparePage({super.key});
+  /// 从节点详情页「加入对比」进来时，优先选中这台节点（再补满到 4 台）。
+  final String? initialNodeId;
+  const ComparePage({super.key, this.initialNodeId});
   @override
   State<ComparePage> createState() => _ComparePageState();
 }
@@ -57,9 +59,15 @@ class _ComparePageState extends State<ComparePage> {
         _nodes = nodes;
         _tasks = tasks;
         _loading = false;
-        _sel
-          ..clear()
-          ..addAll(nodes.take(4).map((n) => n.id));
+        _sel.clear();
+        if (widget.initialNodeId != null &&
+            nodes.any((n) => n.id == widget.initialNodeId)) {
+          _sel.add(widget.initialNodeId!);
+        }
+        for (final n in nodes) {
+          if (_sel.length >= 4) break;
+          _sel.add(n.id);
+        }
       });
       _probe30d();
       _fetchNetq();

@@ -194,6 +194,8 @@ class SpeedBody extends StatelessWidget {
                       const Divider(height: 12),
                   ],
                   const SizedBox(height: 10),
+                  _muted(
+                      '北京/上海联通、移动行：TQ 摘录未给出，不编。TQ 单线程测速每方向只给一个速度值，无每秒速度/最大列。'),
                   _kv('国际 Apple IPv4',
                       '下载 1100.6 Mbps，上传 1211.4 Mbps，38/23ms'),
                   _kv('TCP 参数', 'bbr，fq'),
@@ -363,7 +365,7 @@ class IntlBody extends StatelessWidget {
               children: [
                 _secTitle('常见 IDC 延迟'),
                 const SizedBox(height: 8),
-                _unmeasured('MyProbe 无 IDC 延迟数据'),
+                _unmeasured('需对 14 家 IDC 的多城 TCP 握手探测，MyProbe 无此任务'),
               ],
             ),
           ),
@@ -377,7 +379,7 @@ class IntlBody extends StatelessWidget {
               children: [
                 _secTitle('运营商延迟'),
                 const SizedBox(height: 8),
-                _unmeasured('MyProbe 无运营商延迟数据'),
+                _unmeasured('需运营商多城延迟探测，MyProbe 无此任务'),
               ],
             ),
           ),
@@ -443,7 +445,8 @@ class BgpBody extends StatelessWidget {
                   _kv('国家/地区', node.ipCountry!),
                 _kv('IP', node.ip),
                 const SizedBox(height: 8),
-                _unmeasured('传播图：需 RIPE RIS/RouteViews 数据，未接入'),
+                _unmeasured(
+                    '传播图：需 RIPE RIS/RouteViews 的 AS 路径数据，未接入；接入后才能画传播图、中转/Tier 1 列表'),
               ],
             ),
           ),
@@ -457,15 +460,15 @@ class BgpBody extends StatelessWidget {
               children: [
                 _secTitle('上游变动'),
                 const SizedBox(height: 8),
-                _unmeasured('无变动记录 · 未接 BGP 观测源'),
+                _unmeasured('无变动记录 · 未接 BGP 观测源（需 RIPE RIS/RouteViews 接入后才有变动历史）'),
                 const SizedBox(height: 12),
                 _secTitle('观测详情'),
                 const SizedBox(height: 8),
-                _unmeasured('采集器 / 对等观测点 / 直连对等：未接观测源'),
+                _unmeasured('采集器 / 对等观测点 / 直连对等：未接观测源（需 RIPE RIS/RouteViews）'),
                 const SizedBox(height: 12),
                 _secTitle('RPKI'),
                 const SizedBox(height: 8),
-                _unmeasured('未校验'),
+                _unmeasured('未校验 · 需 RPKI 数据源，未接入'),
               ],
             ),
           ),
@@ -547,7 +550,12 @@ class IpBody extends StatelessWidget {
                 const SizedBox(height: 8),
                 _kv('代理', n.ipProxy ? '标记' : '未标记'),
                 _kv('服务器', n.ipHosting ? '标记' : '未标记'),
-                _kv('Tor / VPN / 滥用 / 机器人', '未测'),
+                _kv('Tor', '未测'),
+                _kv('VPN', '未测'),
+                _kv('滥用', '未测'),
+                _kv('机器人', '未测'),
+                const SizedBox(height: 6),
+                _muted('后四项需多源风险因子数据，MyProbe 只有 ip-api 的代理/机房标记。'),
               ],
             ),
           ),
@@ -596,11 +604,11 @@ class IpBody extends StatelessWidget {
               children: [
                 _secTitle('本地服务'),
                 const SizedBox(height: 8),
-                _unmeasured('MyProbe 不测本地服务解锁'),
+                _unmeasured('需本地服务解锁检测（ViuTV / myTV SUPER / Viu 等），MyProbe 不测'),
                 const SizedBox(height: 12),
                 _secTitle('平台认定地区'),
                 const SizedBox(height: 8),
-                _unmeasured('MyProbe 不测平台认定地区'),
+                _unmeasured('需平台认定地区检测（OneTrust / iQIYI / Bing 等），MyProbe 不测'),
                 const SizedBox(height: 12),
                 _secTitle('邮件能力'),
                 const SizedBox(height: 8),
@@ -619,7 +627,7 @@ class IpBody extends StatelessWidget {
                 _kv('使用类型', n.ipHosting ? '机房' : '未测'),
                 if (n.id == tqSnapshotNodeId)
                   _muted('NQ 五库均判机房。'),
-                _kv('公司类型', '未测'),
+                _kv('公司类型', '未测（NQ 未给公司类型）'),
                 const SizedBox(height: 12),
                 _secTitle('定位库对照'),
                 const SizedBox(height: 8),
@@ -639,13 +647,14 @@ class IpBody extends StatelessWidget {
                   _kv('登记持有人', '$nqBgpOrg · 香港'),
                   _kv('宣告方', 'AS41378 Kirino'),
                   _kv('注册时间', nqBgpRegistered),
-                  _kv('关系', '未测（NQ 未给出）'),
+                  _kv('关系', '未测（NQ 未给出与登记持有人的关系：租用/自有）'),
+                  _kv('首次宣告', '未测（NQ 未给出）'),
                 ] else
                   _unmeasured('登记持有人 / 宣告方 / 首次宣告：未接数据'),
                 const SizedBox(height: 12),
                 _secTitle('变化记录'),
                 const SizedBox(height: 8),
-                _unmeasured('暂无变化记录'),
+                _unmeasured('暂无变化记录 · 只有 2026-11-24 一次 NQ 快照，无历史可比'),
               ],
             ),
           ),
@@ -695,9 +704,13 @@ class _PerfBodyState extends State<PerfBody> {
                 const SizedBox(height: 4),
                 _muted('最近 30 天趋势'),
                 const SizedBox(height: 10),
-                _kv('CPU 型号',
-                    n.cpuModel ??
-                        (isSj ? '$nqCpuLine（NQ；未给精确型号）' : '未测')),
+                _kv(
+                    'CPU 型号',
+                    (n.cpuModel != null && n.cpuModel!.isNotEmpty)
+                        ? n.cpuModel!
+                        : (isSj
+                            ? 'AMD EPYC（型号未上报）· $nqCpuFreqMhz（NQ；频率不是型号）'
+                            : '未测')),
                 _kv('架构', n.arch ?? '未测'),
                 _kv('核心数', n.cpuCores > 0 ? '${n.cpuCores}核' : '未测'),
                 _kv('内存',
@@ -709,10 +722,10 @@ class _PerfBodyState extends State<PerfBody> {
                   _kv('内存已用', '353MB（36% · NQ）'),
                   _kv('硬盘已用', '2.7G（18% · NQ）'),
                 ],
-                if (n.cpuModel == null)
+                if (n.cpuModel == null || n.cpuModel!.isEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
-                    child: _muted('CPU 型号：agent 已上报、服务端库里有，但 node_latest 接口未返回，需服务端补一行。'),
+                    child: _muted('CPU 型号：服务端 v6.11 起在 node_latest 里返回 cpu_model（需升级服务端）；未升级前显示（型号未上报）。'),
                   ),
                 const SizedBox(height: 12),
                 _segTabs([
@@ -773,6 +786,13 @@ class _PerfBodyState extends State<PerfBody> {
                   ] else if (_diskBlock == '1m' && isSj) ...[
                     _kv('读', '$nqFioSeq1mRead MB/s（fio SEQ1M/Q8 · NQ）'),
                     _kv('写', '$nqFioSeq1mWrite MB/s（fio SEQ1M/Q8 · NQ）'),
+                  ] else if ((_diskBlock == '64k' ||
+                          _diskBlock == '512k') &&
+                      isSj) ...[
+                    _kv('读', '未测'),
+                    _kv('写', '未测'),
+                    const SizedBox(height: 6),
+                    _muted('NQ 报告只给了 4k Q1 与 1M Q8，未给 64k/512k。'),
                   ] else ...[
                     _kv('读', '未测'),
                     _kv('写', '未测'),
@@ -787,7 +807,10 @@ class _PerfBodyState extends State<PerfBody> {
                       '$nqHqScore 分（CPU 13430 + 内存 8680 + 硬盘 1473），$nqHqRank'),
                 ],
                 const SizedBox(height: 6),
-                _muted('趋势：无历史跑分数据，画不出 30 天趋势。'),
+                _secTitle('30 天趋势'),
+                const SizedBox(height: 6),
+                _unmeasured(
+                    '无历史跑分数据 · 跑分是 2026-11-24 的一次快照，需多次跑分才能画趋势，不画假线'),
               ],
             ),
           ),
@@ -810,11 +833,19 @@ class _PerfBodyState extends State<PerfBody> {
                 ], _stealRange,
                     (v) => setState(() => _stealRange = v)),
                 const SizedBox(height: 10),
-                _kv('均值', '未测'),
-                _kv('P95', '未测'),
-                _kv('峰值', '未测'),
-                const SizedBox(height: 6),
-                _muted('agent 未采集 steal（metrics 表无此列）。'),
+                if (n.cpuSteal != null) ...[
+                  _kv('最新',
+                      '${n.cpuSteal!.toStringAsFixed(1)}%（agent 已上报）'),
+                  _kv('均值 / P95 / 峰值', '未测'),
+                  const SizedBox(height: 6),
+                  _muted('均值/P95/峰值需 history 接口返回 steal 序列，未接；最新值来自服务端 v6.11 + agent 6.9 上报。'),
+                ] else ...[
+                  _kv('均值', '未测'),
+                  _kv('P95', '未测'),
+                  _kv('峰值', '未测'),
+                  const SizedBox(height: 6),
+                  _muted('agent 未上报 steal（需服务端 v6.11 + agent 6.9：metrics 表加 cpu_steal 列）。'),
+                ],
               ],
             ),
           ),
@@ -835,11 +866,19 @@ class _PerfBodyState extends State<PerfBody> {
                 ], _iowaitRange,
                     (v) => setState(() => _iowaitRange = v)),
                 const SizedBox(height: 10),
-                _kv('均值', '未测'),
-                _kv('P95', '未测'),
-                _kv('峰值', '未测'),
-                const SizedBox(height: 6),
-                _muted('agent 未采集 iowait（metrics 表无此列）。'),
+                if (n.cpuIowait != null) ...[
+                  _kv('最新',
+                      '${n.cpuIowait!.toStringAsFixed(1)}%（agent 已上报）'),
+                  _kv('均值 / P95 / 峰值', '未测'),
+                  const SizedBox(height: 6),
+                  _muted('均值/P95/峰值需 history 接口返回 iowait 序列，未接；最新值来自服务端 v6.11 + agent 6.9 上报。'),
+                ] else ...[
+                  _kv('均值', '未测'),
+                  _kv('P95', '未测'),
+                  _kv('峰值', '未测'),
+                  const SizedBox(height: 6),
+                  _muted('agent 未上报 iowait（需服务端 v6.11 + agent 6.9：metrics 表加 cpu_iowait 列）。'),
+                ],
               ],
             ),
           ),

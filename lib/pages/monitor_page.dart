@@ -26,6 +26,7 @@ class MonitorBody extends StatefulWidget {
 class _MonitorPageState extends State<MonitorBody> {
   String _targetSet = 'icmp'; // tcp | icmp（只有 icmp 有三网数据）
   String _range = '24h'; // realtime | 24h | 7d | 30d
+  String _mapCarrier = 'telecom'; // 全国地图切换运营商
   late String _region;
   Map<String, dynamic> _netq = {};
   bool _netqLoading = false;
@@ -215,12 +216,11 @@ class _MonitorPageState extends State<MonitorBody> {
                           fontWeight: FontWeight.w700,
                           color: BocchiTheme.ink)),
                   const SizedBox(height: 4),
-                  Text('$_region · 近 7 天 TCP · 每列 1 小时 · 每行 1ms',
-                      style: TextStyle(
-                          fontSize: 12, color: BocchiTheme.inkSoft)),
-                  const SizedBox(height: 10),
+                  // v1.17.10：原来这里抄了对方的副标题（「近 7 天 TCP ·
+                  // 每列 1 小时 · 每行 1ms」），看着像有热力图，实际是空
+                  // ——副标题删掉，只留诚实的空状态。
                   Text(
-                    '暂无分布数据 · 需服务端保留 7 天分省拨测历史，当前拨测历史只保留近 22 次',
+                    '暂无分布数据 · 需服务端保留 7 天分省拨测历史（画中位/P10/P90 热力图），当前拨测历史只保留近 22 次',
                     style: TextStyle(
                         fontSize: 13, color: BocchiTheme.inkSoft),
                   ),
@@ -230,6 +230,8 @@ class _MonitorPageState extends State<MonitorBody> {
           ),
           const SizedBox(height: 12),
           _tqTableCard(),
+          const SizedBox(height: 12),
+          _mapCard(),
         ],
     );
   }
@@ -339,6 +341,130 @@ class _MonitorPageState extends State<MonitorBody> {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// 全国地图（TQ 快照对照）：按区域分块的 31 省回程 tile 图。
+  /// 不是地理形状地图，是按华北/东北/华东/华中/华南/西南/西北分组
+  /// 的方块图；格内数字是该运营商回程延迟（快照未给的写 —），格内
+  /// 小字是回程标签。只用 tq_snapshot.dart 里的数据，不编数。
+  /// 只对圣何塞节点显示快照；其他节点写 未测。
+  Widget _mapCard() {
+    final isSj = widget.node.id == tqSnapshotNodeId;
+    const carriers = ['telecom', 'unicom', 'mobile'];
+    const groups = [
+      '华北',
+      '东北',
+      '华东',
+      '华中',
+      '华南',
+      '西南',
+      '西北',
+    ];
+    return GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('全国地图（TQ 快照对照）',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: BocchiTheme.ink)),
+            const SizedBox(height: 4),
+            Text(
+                isSj
+                    ? 'TcpQuality $tqSnapshotTime · 31 省回程 · 按区域分块'
+                    : '本节点暂无 TQ 快照',
+                style: TextStyle(
+                    fontSize: 12, color: BocchiTheme.inkSoft)),
+            const SizedBox(height: 10),
+            if (!isSj)
+              Text('未测 · 只有圣何塞节点有 2026-11-24 的 TQ 快照',
+                  style: TextStyle(
+                      fontSize: 13, color: BocchiTheme.inkSoft))
+            else ...[
+              Row(
+                children: [
+                  for (final c in carriers)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(ispNames[c]!,
+                            style: const TextStyle(fontSize: 12)),
+                        selected: _mapCarrier == c,
+                        selectedColor: BocchiTheme.pinkDeep,
+                        labelStyle: TextStyle(
+                            color: _mapCarrier == c
+                                ? Colors.white
+                                : BocchiTheme.ink),
+                        onSelected: (_) =>
+                            setState(() => _mapCarrier = c),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              for (final g in groups) ...[
+                Text(g,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: BocchiTheme.inkSoft)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final prov in regionGroups[g]!)
+                      _mapTile(prov, _mapCarrier),
+                  ],
+                ),
+                if (g != groups.last) const SizedBox(height: 10),
+              ],
+              const SizedBox(height: 10),
+              Text(
+                  '格内数字为回程延迟（ms），— 表示 TQ 摘录未给该省延迟；格内小字为回程标签（TQ 口径）。对照口径：TQ 写广东电信 CN2GIA，但 MyProbe 自测 MTR 判回程未识别，以 MyProbe 自测为准。',
+                  style: TextStyle(
+                      fontSize: 12, color: BocchiTheme.inkSoft)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _mapTile(String province, String carrier) {
+    final lat = tqReturnLatency[province]?[carrier];
+    final label = tqReturnLabel(province, carrier);
+    return Container(
+      width: 74,
+      padding:
+          const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      decoration: BoxDecoration(
+        color: BocchiTheme.pinkLight.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Text(province,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: BocchiTheme.ink)),
+          const SizedBox(height: 2),
+          Text(lat == null ? '—' : '${lat.toStringAsFixed(0)}ms',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: BocchiTheme.ink)),
+          const SizedBox(height: 1),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 10.5, color: Color(0xFF1F9E8E))),
+        ],
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import '../state.dart';
 import '../models.dart';
@@ -559,9 +560,43 @@ class _RegionProbesState extends State<_RegionProbes> {
             const SizedBox(height: 5),
             _HourStrip(hours: _hourlyLat(p)),
           ],
+          // v1.17.10：延迟迷你折线图（PickMyVPS 式）：netq 24h 采样
+          // 原始序列的迷你折线，少于 2 个点不画；不是分省的，是全国
+          // DNS 目标序列，与下方三网延迟图同口径。
+          if (widget.netq != null &&
+              _sparkLat(p).whereType<double>().length >= 2) ...[
+            const SizedBox(height: 5),
+            _MiniSpark(
+              values: _sparkLat(p),
+              color: p.name.endsWith('电信')
+                  ? BocchiTheme.pinkDeep
+                  : p.name.endsWith('联通')
+                      ? const Color(0xFF7B61FF)
+                      : BocchiTheme.okGreen,
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// 该运营商 netq 24h 采样的原始延迟序列（迷你折线图用，null=无采样）。
+  List<double?> _sparkLat(NodeProbe p) {
+    final key = p.name.endsWith('电信')
+        ? 'telecom'
+        : p.name.endsWith('联通')
+            ? 'unicom'
+            : p.name.endsWith('移动')
+                ? 'mobile'
+                : null;
+    if (key == null || widget.netq == null) return const [];
+    final d = widget.netq![key] as Map<String, dynamic>?;
+    if (d == null) return const [];
+    final lats = ((d['lat'] as List?) ?? [])
+        .map((e) => e == null ? null : (e as num).toDouble())
+        .toList();
+    // 只留最近 96 个点，迷你图够画就行
+    return lats.length > 96 ? lats.sublist(lats.length - 96) : lats;
   }
 
   /// 该运营商 24h 采样按小时聚合（本地时区），返回 24 格平均延迟
@@ -724,6 +759,51 @@ class _HourStrip extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// 延迟迷你折线图：无坐标轴、无网格，只画线 + 淡淡的填充。
+/// 画的是 netq 24h 采样序列（全国 DNS 目标，非分省）。
+class _MiniSpark extends StatelessWidget {
+  final List<double?> values;
+  final Color color;
+  const _MiniSpark({required this.values, required this.color});
+  @override
+  Widget build(BuildContext context) {
+    final pts = <FlSpot>[];
+    double maxV = 0;
+    for (var i = 0; i < values.length; i++) {
+      final v = values[i];
+      if (v == null) continue;
+      pts.add(FlSpot(i.toDouble(), v));
+      if (v > maxV) maxV = v;
+    }
+    return SizedBox(
+      height: 26,
+      child: LineChart(
+        LineChartData(
+          minY: 0,
+          maxY: maxV > 0 ? maxV * 1.15 : 1,
+          clipData: const FlClipData.all(),
+          titlesData: const FlTitlesData(show: false),
+          gridData: const FlGridData(show: false),
+          borderData: FlBorderData(show: false),
+          lineBarsData: [
+            LineChartBarData(
+              spots: pts,
+              isCurved: true,
+              color: color,
+              barWidth: 1.5,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(
+                show: true,
+                color: color.withValues(alpha: 0.12),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

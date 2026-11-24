@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:myprobe_app/models.dart';
 import 'package:myprobe_app/outbound_routes.dart';
 import 'package:myprobe_app/probe_stats.dart';
+import 'package:myprobe_app/route_history.dart';
 import 'package:myprobe_app/route_labels.dart';
 import 'package:myprobe_app/theme.dart';
 import 'package:myprobe_app/tq_snapshot.dart';
@@ -31,6 +32,8 @@ class _RoutePageState extends State<RouteBody> {
   String _carrier = 'telecom';
   Map<String, String> _outLabels = {};
   Map<String, String> _outDates = {};
+  // 线路变化记录（本机存）：详情页每次进页记一次回程标签快照。
+  List<RouteSnapshot> _routeHist = [];
 
   Set<String> get _availableRegions =>
       groupProbesByRegion(widget.node.nodeProbes).keys.toSet();
@@ -44,6 +47,12 @@ class _RoutePageState extends State<RouteBody> {
             ? _availableRegions.first
             : '广东');
     _reloadOut();
+    _loadHist();
+  }
+
+  Future<void> _loadHist() async {
+    final h = await loadRouteHistory(widget.node.id);
+    if (mounted) setState(() => _routeHist = h);
   }
 
   Future<void> _reloadOut() async {
@@ -303,7 +312,7 @@ class _RoutePageState extends State<RouteBody> {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  '该模式暂无数据 · agent 仅上报 ICMP MTR，没有 ${_mode == 'tcp' ? 'TCP' : 'TCP 大包'} 的逐跳数据',
+                  '该模式暂无数据 · agent 仅上报 ICMP MTR，没有 ${_mode == 'tcp' ? 'TCP' : 'TCP 大包'} 的逐跳数据（需 agent 改跑 ${_mode == 'tcp' ? 'TCP' : 'TCP 大包'} MTR 并上报）',
                   style: TextStyle(
                       fontSize: 13, color: BocchiTheme.inkSoft),
                 ),
@@ -314,7 +323,7 @@ class _RoutePageState extends State<RouteBody> {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  '无 ASN 数据，无法按 AS 折叠 · agent 只报跳点 host，不报 ASN/位置',
+                  '无 ASN 数据，无法按 AS 折叠 · agent 只报跳点 host，不报 ASN/位置（需 agent 上报每跳 ASN 才能折叠）',
                   style: TextStyle(
                       fontSize: 13, color: BocchiTheme.inkSoft),
                 ),
@@ -503,8 +512,12 @@ class _RoutePageState extends State<RouteBody> {
     );
   }
 
-  /// 线路变化记录：MyProbe 未记录线路变化，留空位。
+  /// 线路变化记录：本机存的回程标签快照（详情页每次进页记一次，
+  /// 无变化不写）。第一条是基线，之后每条都是一次标签翻转。
   Widget _changesCard() {
+    final now = DateTime.now();
+    final today =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     return GlassCard(
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -517,12 +530,57 @@ class _RoutePageState extends State<RouteBody> {
                     fontWeight: FontWeight.w700,
                     color: BocchiTheme.ink)),
             const SizedBox(height: 8),
-            Text('暂无变化记录 · MyProbe 未记录线路变化',
-                style: TextStyle(
-                    fontSize: 13, color: BocchiTheme.inkSoft)),
+            if (_routeHist.isEmpty)
+              Text(
+                  '暂无变化记录 · 本机从 $today 起，每次进详情页记一次三网回程标签快照，有变化才追加（例如联通 4837 ↔ 未识别翻转会在这里留痕）',
+                  style: TextStyle(
+                      fontSize: 13, color: BocchiTheme.inkSoft))
+            else ...[
+              Text('记录始于 ${_routeHist.first.date} · 共 ${_routeHist.length} 条快照',
+                  style: TextStyle(
+                      fontSize: 12.5, color: BocchiTheme.inkSoft)),
+              const SizedBox(height: 8),
+              for (var i = 0; i < _routeHist.length; i++) ...[
+                _histRow(_routeHist[i],
+                    isFirst: i == 0),
+                if (i < _routeHist.length - 1)
+                  Divider(
+                      height: 12,
+                      color:
+                          BocchiTheme.inkSoft.withValues(alpha: 0.1)),
+              ],
+              const SizedBox(height: 6),
+              Text('只记标签变化，不记跳点明细；去程（tracepath 录入）不进这张表。',
+                  style: TextStyle(
+                      fontSize: 12, color: BocchiTheme.inkSoft)),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _histRow(RouteSnapshot s, {bool isFirst = false}) {
+    String lbl(String? v) => v ?? '未识别';
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 92,
+          child: Text(s.date,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: BocchiTheme.ink)),
+        ),
+        Expanded(
+          child: Text(
+            '电信 ${lbl(s.labels['telecom'])} · 联通 ${lbl(s.labels['unicom'])} · 移动 ${lbl(s.labels['mobile'])}${isFirst ? '（基线）' : ''}',
+            style:
+                TextStyle(fontSize: 13, color: BocchiTheme.ink),
+          ),
+        ),
+      ],
     );
   }
 

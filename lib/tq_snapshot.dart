@@ -173,6 +173,8 @@ const String nqSnapshotUrl =
 
 /// 硬件：KVM，Debian 12，内核 6.1.0-44-cloud-amd64，1 核 AMD EPYC，
 /// NQ 只给出频率 2449.998MHz，未给精确型号——型号仍以服务端接口为准。
+/// 注意：频率不是型号，UI 上绝不能把 2449.998MHz 写成型号。
+const String nqCpuFreqMhz = '2449.998MHz';
 const String nqCpuLine = '1核 AMD EPYC · 2449.998MHz';
 const String nqVirtOs = 'KVM · Debian 12 · 内核 6.1.0-44-cloud-amd64';
 const double nqGb5Single = 965;

@@ -1,16 +1,21 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../merchant.dart';
 import '../outbound_routes.dart';
-import '../probe_stats.dart';
+import '../route_history.dart';
 import '../route_labels.dart';
 import '../state.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../tq_snapshot.dart';
 import '../ui.dart';
 import '../widgets/route_pill.dart';
 import '../widgets/widgets.dart';
 import '../widgets/node_card.dart';
+import 'compare_page.dart';
 import 'detail_tabs.dart';
 import 'monitor_page.dart';
 import 'node_admin.dart';
@@ -87,6 +92,8 @@ class NodeDetailBodyState extends State<NodeDetailBody>
   HistoryData? _hist24; // 流量统计·今日用（24h 上报历史）
   List<Map<String, dynamic>> _daily = [];
   ProbeNode? _node;
+  // 全部节点（小结的 同商家 / 你可能还想看 用）
+  List<ProbeNode> _allNodes = [];
   bool _loading = true;
   // 9 标签：概览 0 / 规格 1 / 延迟 2 / 测速 3 / 国际 4 / 路由 5 /
   // BGP 6 / IP 质量 7 / 性能 8（PickMyVPS 式，点 概览 回主概览页）
@@ -230,6 +237,7 @@ class NodeDetailBodyState extends State<NodeDetailBody>
           orElse: () => nodes.first);
       setState(() {
         _node = nn;
+        _allNodes = nodes;
         _hist = hist;
         _hist24 = hist24;
         _daily = daily;
@@ -244,6 +252,12 @@ class NodeDetailBodyState extends State<NodeDetailBody>
       widget.onNode?.call(nn);
       _fetchRank(nodes);
       _loadOutRoutes(nn.id);
+      // v1.17.10：回程标签快照记一笔（本机存，无变化不写）；
+      // 线路变化记录从这里攒，记录始于第一次进页的日期。
+      recordRouteSnapshot(nn.id, {
+        for (final t in ['telecom', 'unicom', 'mobile'])
+          t: _labelFor(t),
+      });
       // 进页自动测一次去程（本机直连）；下拉刷新不重测，点行内刷新才重测
       if (_outboundFor != nn.id) {
         _outboundFor = nn.id;
@@ -321,11 +335,15 @@ class NodeDetailBodyState extends State<NodeDetailBody>
               onTap: () => _goTab(2),
               headerTrailing: Icon(Icons.chevron_right,
                   size: 20, color: BocchiTheme.inkSoft)),
-          // PickMyVPS 式卡片顺序：延迟（顶部节点卡内）→ 线路 → 三网中位延迟
+          // v1.17.10：商家官网 / 加入对比 / 复制链接（PickMyVPS 式顶栏按钮）
+          _nodeActions(n),
+          // PickMyVPS 式卡片顺序：延迟（顶部节点卡内）→ 线路
           // → 套餐与规格 → 网络与性能，再往下是图表/流量/概览/三网图/解锁，
-          // 末尾是自动小结
+          // 末尾是自动小结。
+          // v1.17.10：概览页「三网中位延迟」卡已删（PickMyVPS 详情页里
+          // 没有这张表，MyProbe 也不留了）；延迟标签页的 TQ 31 省对照表
+          // 是另一张卡，留着。
           _mtrCard(),
-          _medianTableCard(n),
           _specCard(n),
           _netPerfCard(n),
           // 图表范围选择器紧贴图表上方（原在页底、流量卡之下，控制关系反了）；
@@ -1267,6 +1285,15 @@ class NodeDetailBodyState extends State<NodeDetailBody>
     return out;
   }
 
+  /// 单个运营商的回程线路名（判不出为 null）；线路变化记录快照用。
+  String? _labelFor(String carrier) {
+    final hops = (((_mtr[carrier] as Map<String, dynamic>?)?['hops']
+                as List?) ??
+            [])
+        .cast<Map<String, dynamic>>();
+    return routeLabelFromHops(carrier, hops);
+  }
+
   /// 本页三网回程（运营商名 → 线路名），只有能判定的才进 map
   Map<String, String> _routeLabels() {
     final out = <String, String>{};
@@ -1396,99 +1423,81 @@ class NodeDetailBodyState extends State<NodeDetailBody>
     );
   }
 
-  /// 三网中位延迟表（PickMyVPS 式）：按省份分行，每格是延迟 + 线路名。
-  /// 延迟 = 该省拨测中位值（histLat 近 22 次采样）；线路名 = 该运营商
-  /// 回程 MTR 判定（单组测量，不分省份），判不出写 未识别。广东置顶。
-  /// 点标题进持续监测子页。
-  Widget _medianTableCard(ProbeNode n) {
-    final groups = groupProbesByRegion(n.nodeProbes);
-    if (groups.isEmpty) return const SizedBox.shrink();
-    final regions = groups.keys.toList();
-    regions.sort((a, b) {
-      if (a == '广东') return -1;
-      if (b == '广东') return 1;
-      return 0;
-    });
-    final labels = _routeLabelsByKey();
-    const carriers = ['telecom', 'unicom', 'mobile'];
-    return GlassCard(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _cardHeader('📊 三网中位延迟', onTap: () => _goTab(2)),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const SizedBox(width: 52),
-                for (final c in carriers)
-                  Expanded(
-                    child: Text(_ispNames[c]!,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            color: BocchiTheme.inkSoft)),
-                  ),
-              ],
+  /// 节点操作行（PickMyVPS 式顶栏按钮）：商家官网 / 加入对比 / 复制链接。
+  /// 商家官网：只有核实过官网域名的商家才显示（见 merchant.dart），
+  /// 未核实的不显示，不猜域名。复制链接：复制探针看板地址（本节点所在
+  /// 的探针，没有按节点的独立网页，不编一个假的深链）。
+  Widget _nodeActions(ProbeNode n) {
+    final m = merchantOf(n.id);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          if (m != null && m.site != null)
+            _actionChip(
+              Icons.language,
+              '商家官网',
+              () async {
+                final uri = Uri.parse(m.site!);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri,
+                      mode: LaunchMode.externalApplication);
+                } else if (mounted) {
+                  showErr(context, '打不开浏览器：${m.site}');
+                }
+              },
             ),
-            const Divider(height: 12),
-            for (var ri = 0; ri < regions.length; ri++) ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 52,
-                    child: Text(regions[ri],
-                        style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
-                            color: BocchiTheme.ink)),
-                  ),
-                  for (final c in carriers)
-                    Expanded(
-                      child: _medianCell(
-                        medianLatencyByRegion(
-                            n.nodeProbes, regions[ri])[c],
-                        labels[c],
-                      ),
-                    ),
-                ],
-              ),
-              if (ri < regions.length - 1)
-                Divider(
-                    height: 12,
-                    color:
-                        BocchiTheme.inkSoft.withValues(alpha: 0.1)),
-            ],
-            const SizedBox(height: 8),
-            Text(
-                '延迟为该省拨测中位值（近 22 次采样）；线路名为该运营商回程 MTR 判定（单组测量，不分省份）',
-                style: TextStyle(
-                    fontSize: 11.5, color: BocchiTheme.inkSoft)),
-          ],
-        ),
+          _actionChip(
+            Icons.compare_arrows,
+            '加入对比',
+            () => Navigator.of(context).push(
+              MaterialPageRoute(
+                  builder: (_) => ComparePage(initialNodeId: n.id)),
+            ),
+          ),
+          _actionChip(
+            Icons.link,
+            '复制链接',
+            () async {
+              final url = AppState.instance.client.baseUrl;
+              await Clipboard.setData(ClipboardData(text: url));
+              if (mounted) showOk(context, '已复制探针链接');
+            },
+          ),
+        ],
       ),
     );
   }
 
-  Widget _medianCell(double? med, String? label) {
-    return Column(
-      children: [
-        Text(med == null ? '--' : '${med.toStringAsFixed(0)}ms',
-            style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                color: BocchiTheme.ink)),
-        const SizedBox(height: 2),
-        Text(label ?? '未识别',
-            style: TextStyle(
-                fontSize: 11.5,
-                color: label == null
-                    ? BocchiTheme.inkSoft
-                    : const Color(0xFF1F9E8E))),
-      ],
+  Widget _actionChip(
+      IconData icon, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: BocchiTheme.inkSoft.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: BocchiTheme.inkSoft.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: BocchiTheme.ink),
+            const SizedBox(width: 5),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: BocchiTheme.ink)),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1599,17 +1608,34 @@ class NodeDetailBodyState extends State<NodeDetailBody>
         tab: 7,
       ));
     }
-    // 带宽测速 / 性能：agent 没有测速/跑分能力，行一直存在、值写 未测
+    // 带宽测速 / 性能：agent 没有测速/跑分能力。圣何塞节点有 2026-11-24
+    // 的 TQ/NQ 快照，行里写快照数并标来源（点进去看完整表）；其他节点
+    // 没有快照，写 未测——v1.17.9 的 bug 是这里写死 未测，哪怕快照有数。
+    final isSj = n.id == tqSnapshotNodeId;
     rows.add((
       title: '🚀 带宽测速',
-      body: Text('未测',
-          style: TextStyle(fontSize: 13, color: BocchiTheme.inkSoft)),
+      body: Text(
+          isSj
+              ? '最高回程 666.6 Mbps（TQ 快照 $tqSnapshotTime）'
+              : '未测 · agent 无测速能力，本节点也无 TQ 快照',
+          style: TextStyle(
+              fontSize: 13,
+              color: isSj
+                  ? BocchiTheme.ink
+                  : BocchiTheme.inkSoft)),
       tab: 3,
     ));
     rows.add((
       title: '⚡ 性能',
-      body: Text('未测',
-          style: TextStyle(fontSize: 13, color: BocchiTheme.inkSoft)),
+      body: Text(
+          isSj
+              ? 'GB5 单核 $nqGb5Single（NQ 快照 $nqSnapshotTime）'
+              : '未测 · 无跑分数据，本节点也无 NQ 快照',
+          style: TextStyle(
+              fontSize: 13,
+              color: isSj
+                  ? BocchiTheme.ink
+                  : BocchiTheme.inkSoft)),
       tab: 8,
     ));
     return GlassCard(
@@ -1657,8 +1683,9 @@ class NodeDetailBodyState extends State<NodeDetailBody>
     );
   }
 
-  /// 小结（PickMyVPS 式自动总结段落）：探测省份视角三网中位延迟 + 排名 +
-  /// 配置价格 + 解锁情况 + 在线/余期；只有已有的数据才写进句子。
+  /// 小结（PickMyVPS 式自动总结段落）：回程、去程、排名、配置价格 +
+  /// 解锁情况 + 在线/余期；只有已有的数据才写进句子。
+  /// v1.17.10：三网中位延迟句已删（概览页那张表整个拿掉了）。
   Widget _summaryCard(ProbeNode n) {
     final parts = <String>[];
     // 探测省份视角（与顶部探测目标同口径：存过的省份优先）
@@ -1692,34 +1719,9 @@ class NodeDetailBodyState extends State<NodeDetailBody>
     if (_outboundMs != null) {
       parts.add('本机去程约 ${_outboundMs!.toStringAsFixed(0)} ms');
     }
-    // 探测省份视角三网中位延迟（中位取 histLat 近 22 次采样，无历史退回最新值）
-    if (groups.isNotEmpty) {
-      final ps = groups[region] ?? [];
-      const order = ['电信', '联通', '移动'];
-      final lats = <String>[];
-      for (final c in order) {
-        NodeProbe? p;
-        for (final e in ps) {
-          if (e.name.endsWith(c)) {
-            p = e;
-            break;
-          }
-        }
-        final lat = p == null
-            ? null
-            : medianOf(
-                p.histLat.isNotEmpty ? p.histLat : [p.latencyMs]);
-        if (lat != null) lats.add('$c ${lat.toStringAsFixed(0)}ms');
-      }
-      if (lats.isNotEmpty) {
-        parts.add(
-            '$region视角三网中位延迟：${lats.join('、')}${_rankText == null ? '' : '，$_rankText'}');
-      } else if (_rankText != null) {
-        parts.add(_rankText!);
-      }
-    } else if (_rankText != null) {
-      parts.add(_rankText!);
-    }
+    // v1.17.10：三网中位延迟句已删（概览页那张表整个拿掉了，小结不再
+    // 提它）；排名单独成句。
+    if (_rankText != null) parts.add(_rankText!);
     // 配置与价格
     final specs = <String>[];
     if (n.cpuCores > 0) specs.add('${n.cpuCores}核');
@@ -1763,7 +1765,18 @@ class NodeDetailBodyState extends State<NodeDetailBody>
       upBits.add(n.daysLeft! < 0 ? '已过期' : '余期 ${n.daysLeft} 天');
     }
     if (upBits.isNotEmpty) parts.add(upBits.join('，'));
-    if (parts.isEmpty) return const SizedBox.shrink();
+    // 同商家 / 你可能还想看（PickMyVPS 式）：同商家按 merchant.dart 的
+    // 核实映射分组；商家未登记的节点不显示同商家行。点名字进那台节点。
+    final myMerchant = merchantOf(n.id);
+    final siblings = myMerchant == null
+        ? <ProbeNode>[]
+        : _allNodes
+            .where((o) =>
+                o.id != n.id &&
+                merchantOf(o.id)?.name == myMerchant.name)
+            .toList();
+    final others = _allNodes.where((o) => o.id != n.id).toList();
+    if (parts.isEmpty && others.isEmpty) return const SizedBox.shrink();
     return GlassCard(
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -1771,12 +1784,77 @@ class NodeDetailBodyState extends State<NodeDetailBody>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _sectionTitle('📝 小结'),
-            const SizedBox(height: 8),
-            Text(parts.map((p) => p.endsWith('。') ? p : '$p。').join(),
-                style:
-                    TextStyle(fontSize: 13, color: BocchiTheme.ink)),
+            if (parts.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(parts.map((p) => p.endsWith('。') ? p : '$p。').join(),
+                  style:
+                      TextStyle(fontSize: 13, color: BocchiTheme.ink)),
+            ],
+            if (myMerchant != null) ...[
+              const SizedBox(height: 12),
+              Text('同商家（${myMerchant.name}）',
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: BocchiTheme.ink)),
+              const SizedBox(height: 6),
+              if (siblings.isEmpty)
+                Text('暂无其他 ${myMerchant.name} 节点',
+                    style: TextStyle(
+                        fontSize: 12.5, color: BocchiTheme.inkSoft))
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final o in siblings) _nodeChip(o),
+                  ],
+                ),
+            ],
+            if (others.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('你可能还想看',
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: BocchiTheme.ink)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final o in others) _nodeChip(o),
+                ],
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// 小结里的节点 chip：点进那台节点的详情页。
+  Widget _nodeChip(ProbeNode o) {
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+            builder: (_) => NodeDetailPage(nodeId: o.id)),
+      ),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: BocchiTheme.pinkLight.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: BocchiTheme.pinkDeep.withValues(alpha: 0.35)),
+        ),
+        child: Text(o.name.isEmpty ? o.id : o.name,
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: BocchiTheme.pinkDeep)),
       ),
     );
   }

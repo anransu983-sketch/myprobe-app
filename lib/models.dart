@@ -51,6 +51,10 @@ class ProbeNode {
   final String? arch;
   final String? cpuModel;
   final int? ipQualityTs;
+  // v1.17.10：CPU steal / iowait（%），最新一条 metrics；
+  // 服务端 v6.11 + agent 6.9 上报后才有值，在此之前 null=未测。
+  final double? cpuSteal;
+  final double? cpuIowait;
 
   ProbeNode({
     required this.id,
@@ -100,6 +104,8 @@ class ProbeNode {
     this.arch,
     this.cpuModel,
     this.ipQualityTs,
+    this.cpuSteal,
+    this.cpuIowait,
   });
 
   static double? _d(dynamic v) =>
@@ -148,6 +154,8 @@ class ProbeNode {
         ipQualityTs: _i(j['ip_quality_ts']),
         arch: j['arch']?.toString(),
         cpuModel: j['cpu_model']?.toString(),
+        cpuSteal: _d(j['cpu_steal']),
+        cpuIowait: _d(j['cpu_iowait']),
         lastSeen: _i(j['last_seen']) ?? 0,
         hasIpv6: j['has_ipv6'] == true,
         sshHost: j['ssh_host']?.toString(),
