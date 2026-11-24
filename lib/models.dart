@@ -46,6 +46,11 @@ class ProbeNode {
   final String? sshUser;
   final bool sshReady;
   final List<NodeProbe> nodeProbes;
+  // v1.17.9：服务端已返回 arch（x86_64 等）与 ip_quality_ts；
+  // cpu_model 服务端库里有、node_latest 未返回，接口补上后自动亮起。
+  final String? arch;
+  final String? cpuModel;
+  final int? ipQualityTs;
 
   ProbeNode({
     required this.id,
@@ -92,6 +97,9 @@ class ProbeNode {
     this.sshUser,
     this.sshReady = false,
     this.nodeProbes = const [],
+    this.arch,
+    this.cpuModel,
+    this.ipQualityTs,
   });
 
   static double? _d(dynamic v) =>
@@ -137,6 +145,9 @@ class ProbeNode {
         ipProxy: j['ip_proxy'] == true,
         ipHosting: j['ip_hosting'] == true,
         ipMobile: j['ip_mobile'] == true,
+        ipQualityTs: _i(j['ip_quality_ts']),
+        arch: j['arch']?.toString(),
+        cpuModel: j['cpu_model']?.toString(),
         lastSeen: _i(j['last_seen']) ?? 0,
         hasIpv6: j['has_ipv6'] == true,
         sshHost: j['ssh_host']?.toString(),

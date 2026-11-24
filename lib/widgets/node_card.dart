@@ -104,6 +104,8 @@ class PhoneNodeCard extends StatelessWidget {
   /// 三网平均排名文案（详情页传，如「三网平均在 4 台节点中排第 2」；
   /// 不传就不显示，列表页不受影响）
   final String? rankText;
+  /// 详情页传：卡片右上角的 >（点开持续监测子页）；不传不显示
+  final Widget? headerTrailing;
   const PhoneNodeCard(
       {super.key,
       required this.node,
@@ -112,7 +114,8 @@ class PhoneNodeCard extends StatelessWidget {
       this.probesStyle = ProbesStyle.standard,
       this.compact = false,
       this.netq,
-      this.rankText});
+      this.rankText,
+      this.headerTrailing});
 
   static String mb(int b) =>
       b <= 0 ? '--' : '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
@@ -202,6 +205,10 @@ class PhoneNodeCard extends StatelessWidget {
                     onPressed: () => NodeAdmin.sheet(
                         context, n, onChanged ?? () {}),
                   ),
+                if (headerTrailing != null) ...[
+                  const SizedBox(width: 4),
+                  headerTrailing!,
+                ],
               ],
             ),
             const SizedBox(height: 2),
