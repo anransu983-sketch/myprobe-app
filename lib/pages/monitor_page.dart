@@ -1,10 +1,11 @@
 // 持续监测子页（PickMyVPS 式）：目标集 TCP / ICMP、实时 / 24h / 7d /
 // 30d、地区选择器、三网 Avg / Jitter / Loss / Last、延迟分布。
-// 数据诚实边界：三网拨测是 ICMP ping（目标集 TCP 没有三网数据）；
-// 统计表按地区取拨测任务近 22 次采样（Avg=均值、Jitter=标准差、
-// Loss=最新丢包、Last=最新延迟）；折线图是服务端 netq 序列（全国 DNS
-// 目标，非分省，范围可切 1h/24h/7d/30d）；延迟分布需要 7 天分省历史，
-// 服务端拨测历史只保留近 22 次，暂无数据，不编。
+// 数据诚实边界（2026-11-24 核代码）：统计表取拨测任务近 22 次采样
+// （Avg=均值、Jitter=标准差、Loss=最新丢包、Last=最新延迟），协议
+// 以任务实际 type 为准（现任务表是 TCP，不写死）；折线图是服务端
+// netq 序列（agent 每 5 分钟 ICMP ping 全国 DNS，非分省，范围可切
+// 1h/24h/7d/30d）；延迟分布需要 7 天分省历史，服务端拨测历史只保
+// 留近 22 次，暂无数据，不编。
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:myprobe_app/models.dart';
@@ -24,7 +25,7 @@ class MonitorBody extends StatefulWidget {
 }
 
 class _MonitorPageState extends State<MonitorBody> {
-  String _targetSet = 'icmp'; // tcp | icmp（只有 icmp 有三网数据）
+  String _targetSet = 'tcp'; // tcp | icmp（默认 TCP：统计表就是拨测任务数据）
   String _range = '24h'; // realtime | 24h | 7d | 30d
   String _mapCarrier = 'telecom'; // 全国地图切换运营商
   late String _region;
@@ -117,8 +118,9 @@ class _MonitorPageState extends State<MonitorBody> {
             ],
           ),
           const SizedBox(height: 12),
-          // 范围：实时 / 24h / 7d / 30d
-          SingleChildScrollView(
+          // 范围：实时 / 24h / 7d / 30d（只影响 ICMP 的 netq 图）
+          if (_targetSet == 'icmp')
+            SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
@@ -151,7 +153,7 @@ class _MonitorPageState extends State<MonitorBody> {
           const SizedBox(height: 12),
           Row(
             children: [
-              InkWell(
+              if (_targetSet == 'tcp') InkWell(
                 onTap: () async {
                   final r = await showRegionPicker(context,
                       available: _availableRegions, current: _region);
@@ -180,28 +182,20 @@ class _MonitorPageState extends State<MonitorBody> {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Text('统计表按此地区拨测；折线图为全国 DNS 目标',
+              if (_targetSet == 'tcp') const SizedBox(width: 10),
+              Text(
+                  _targetSet == 'tcp'
+                      ? '统计表按此地区拨测任务'
+                      : '折线图为全国 DNS 目标（ICMP），不分省',
                   style: TextStyle(
                       fontSize: 12, color: BocchiTheme.inkSoft)),
             ],
           ),
           const SizedBox(height: 12),
-          if (_targetSet == 'tcp')
-            GlassCard(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'TCP 目标集暂无数据 · 三网拨测为 ICMP ping；TCP 只有 AWS 东京一行（见详情页网络与性能）',
-                  style: TextStyle(
-                      fontSize: 13, color: BocchiTheme.inkSoft),
-                ),
-              ),
-            )
-          else ...[
-            _chartCard(),
-            const SizedBox(height: 12),
+          if (_targetSet == 'tcp') ...[
             _statsCard(),
+          ] else ...[
+            _chartCard(),
           ],
           const SizedBox(height: 12),
           GlassCard(
@@ -623,6 +617,27 @@ class _MonitorPageState extends State<MonitorBody> {
     );
   }
 
+  /// 该地区三网拨测任务的实际协议（取任务上报的 type，不写死）：
+  /// 全 TCP → 'TCP'，全 ping → 'ICMP'，混合 → '混合'；任一任务
+  /// 缺 type（服务端 v6.12 前）或缺探针 → null，不猜。
+  String? _protoLabelForRegion() {
+    final types = <String>{};
+    for (final isp in ispNames.keys) {
+      final p = probeForRegionCarrier(
+          widget.node.nodeProbes, _region, ispNames[isp]!);
+      if (p?.type == null) return null;
+      types.add(p!.type!);
+    }
+    if (types.isEmpty) return null;
+    if (types.length == 1) {
+      final t = types.single;
+      if (t == 'tcp') return 'TCP';
+      if (t == 'ping') return 'ICMP';
+      return t.toUpperCase();
+    }
+    return '混合';
+  }
+
   Widget _statsCard() {
     final colorMap = {
       'telecom': BocchiTheme.pinkDeep,
@@ -631,6 +646,7 @@ class _MonitorPageState extends State<MonitorBody> {
     };
     String f(double? v, String unit) =>
         v == null ? '--' : '${v.toStringAsFixed(1)}$unit';
+    final proto = _protoLabelForRegion();
     return GlassCard(
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -663,7 +679,9 @@ class _MonitorPageState extends State<MonitorBody> {
               if (isp != 'mobile') const Divider(height: 12),
             ],
             const SizedBox(height: 8),
-            Text('Avg/Jitter 取该地区拨测近 22 次采样；Loss/Last 为最新一次',
+            Text(
+                'Avg/Jitter 取该地区拨测近 22 次采样；Loss/Last 为最新一次'
+                '${proto == null ? '' : '；协议：$proto'}',
                 style:
                     TextStyle(fontSize: 11.5, color: BocchiTheme.inkSoft)),
           ],

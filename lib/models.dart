@@ -194,6 +194,7 @@ class NodeProbe {
   final double? latencyMs;
   final double? lossPct;
   final int? ts;
+  final String? type; // 拨测任务类型：tcp / ping / http（服务端 v6.12 起上报）
   final List<bool> bars; // 是否可达历史，最老在前
   final List<double?> histLat;
   NodeProbe({
@@ -202,6 +203,7 @@ class NodeProbe {
     this.latencyMs,
     this.lossPct,
     this.ts,
+    this.type,
     this.bars = const [],
     this.histLat = const [],
   });
@@ -215,6 +217,7 @@ class NodeProbe {
             ? null
             : (j['loss_pct'] as num).toDouble(),
         ts: (j['ts'] as num?)?.toInt(),
+        type: j['type'] as String?,
         bars: ((j['bars'] as List?) ?? [])
             .map((e) => e == 1 || e == true)
             .toList(),
